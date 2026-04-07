@@ -484,7 +484,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onOpen }) => {
             <div>
               <span className="text-wm-accent font-medium text-xs">How to organise your work</span>
               <ol className="mt-1 space-y-0.5 list-none">
-                <li>1. <strong className="text-wm-text">Create a folder</strong> for each campaign or client (e.g. "McDonald's SR")</li>
+                <li>1. <strong className="text-wm-text">Create a folder</strong> for each campaign or client (e.g. &quot;McDonald&apos;s SR&quot;)</li>
                 <li>2. <strong className="text-wm-text">Add frames</strong> inside — one frame per ad size (e.g. 1080×1920)</li>
                 <li>3. <strong className="text-wm-text">Open a frame</strong> to animate it in the timeline</li>
                 <li>4. Use <strong className="text-wm-text">⋯</strong> on any frame to rename, move or delete it</li>

@@ -87,7 +87,6 @@ const AudioTrack: React.FC<AudioTrackProps> = ({ ppf: _ppf, duration: _duration,
       const newEnd = Math.min(audioDuration, Math.max(secs, audioTrimStart + 0.1));
       setAudioTrim(audioTrimStart, newEnd);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioTrimStart, audioTrimEnd, audioDuration, W, displaySec]);
 
   const handleWaveformPointerUp = useCallback(() => { dragging.current = null; }, []);

@@ -10,7 +10,6 @@ vi.mock('./gifBuilder', () => ({
   }),
 }));
 
-// eslint-disable-next-line import/order
 import { generateGif } from './gifBuilder';
 
 const makeOpts = (overrides?: Partial<GifExportOptions>): GifExportOptions => ({

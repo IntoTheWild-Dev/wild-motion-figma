@@ -97,13 +97,13 @@ const App: React.FC = () => {
         const updatedProjects = state.projects.map(p =>
           p.id === state.activeProjectId
             ? {
-                id: p.id,
-                name: p.name,
-                folderId: p.folderId,
-                layers: state.layers,
-                duration: state.duration,
-                fps: state.fps,
-              }
+              id: p.id,
+              name: p.name,
+              folderId: p.folderId,
+              layers: state.layers,
+              duration: state.duration,
+              fps: state.fps,
+            }
             : p
         );
         window.parent.postMessage(
@@ -209,7 +209,6 @@ const App: React.FC = () => {
     } else if (!isPlaying && wasPlayingRef.current) {
       audioManager.stop();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying, audioName, audioTrimStart, audioTrimEnd, audioFadeIn, audioFadeOut]);
 
   // Sync voiceover with play/pause
@@ -227,7 +226,6 @@ const App: React.FC = () => {
     } else if (!isPlaying && wasPlayingRef.current) {
       voiceoverManager.stop();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     isPlaying,
     voiceoverName,

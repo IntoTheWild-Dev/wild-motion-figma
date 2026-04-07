@@ -81,7 +81,6 @@ const VoiceoverTrack: React.FC<VoiceoverTrackProps> = ({ ppf: _ppf, duration: _d
     } else {
       setVoiceoverTrim(voiceoverTrimStart, Math.min(voiceoverDuration, Math.max(secs, voiceoverTrimStart + 0.1)));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceoverTrimStart, voiceoverTrimEnd, voiceoverDuration, W, displaySec]);
 
   const handleWaveformPointerUp = useCallback(() => { dragging.current = null; }, []);
