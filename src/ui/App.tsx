@@ -360,6 +360,37 @@ const App: React.FC = () => {
     sendAllLayersToPlugin();
   }, [playhead, sendAllLayersToPlugin]);
 
+  // Restore original layer positions in Figma when playback stops.
+  // Without this, the last animated frame values remain permanently applied to
+  // Figma nodes because the plugin thread sets node.x / node.y directly.
+  useEffect(() => {
+    if (isPlaying) return;
+    // When transitioning to stopped state, send each layer's base values so
+    // Figma nodes return to their pre-animation positions.
+    const state = useAnimationStore.getState();
+    for (const layer of state.layers) {
+      if (!layer.nodeId || !layer.baseValues) continue;
+      // Only restore layers that have at least one animated track
+      const hasAnimation = Object.values(layer.propertyTracks).some(
+        track => track && track.length > 0
+      );
+      if (!hasAnimation) continue;
+      const restoreValues: Record<string, number> = {
+        x: layer.baseValues.x ?? 0,
+        y: layer.baseValues.y ?? 0,
+        rotation: layer.baseValues.rotation ?? 0,
+        opacity: (layer.baseValues.opacity ?? 1) * 100,
+      };
+      if (layer.baseValues.width && layer.baseValues.height) {
+        restoreValues['scaleX'] = 1;
+        restoreValues['scaleY'] = 1;
+        restoreValues['_baseWidth'] = layer.baseValues.width;
+        restoreValues['_baseHeight'] = layer.baseValues.height;
+      }
+      sendFrameToPlugin({ nodeId: layer.nodeId, values: restoreValues });
+    }
+  }, [isPlaying]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Cache Figma selection pushed by plugin (via SELECTION_CHANGE → 'selection-changed' event)
   useEffect(() => {
     const handleSelectionChanged = (event: Event) => {

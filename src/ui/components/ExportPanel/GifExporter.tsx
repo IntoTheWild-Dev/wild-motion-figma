@@ -19,6 +19,8 @@ const GifExporter: React.FC = () => {
   }));
 
   const [sizeIndex, setSizeIndex] = useState(1); // default 1280×720
+  const [quality, setQuality] = useState(10);   // 1 = best, 20 = fastest
+  const [fpsScale, setFpsScale] = useState(1);  // 1 | 0.5 | 0.25
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +93,8 @@ const GifExporter: React.FC = () => {
         height,
         fps: storeFps,
         totalFrames: duration,
+        quality,
+        fpsScale,
         getFrame: async (frameIndex: number) => {
           const allLayerValues = getLayerValues(frameIndex);
 
@@ -148,6 +152,41 @@ const GifExporter: React.FC = () => {
           {GIF_SIZE_OPTIONS.map((opt, i) => (
             <option key={opt.label} value={i}>{opt.label}</option>
           ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Quality&nbsp;
+          <span className="font-normal text-gray-400">({quality} — lower = better)</span>
+        </label>
+        <input
+          type="range"
+          min={1}
+          max={20}
+          step={1}
+          value={quality}
+          onChange={(e) => setQuality(Number(e.target.value))}
+          disabled={isExporting}
+          className="w-full accent-indigo-500"
+        />
+        <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+          <span>Best</span>
+          <span>Fastest</span>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Frame rate</label>
+        <select
+          value={fpsScale}
+          onChange={(e) => setFpsScale(Number(e.target.value))}
+          className="w-full px-2 py-1 text-sm border rounded"
+          disabled={isExporting}
+        >
+          <option value={1}>Full (100%)</option>
+          <option value={0.5}>Half (50%)</option>
+          <option value={0.25}>Quarter (25%)</option>
         </select>
       </div>
 

@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAnimationStore } from '@/ui/store/animationStore';
 
+type DisplayMode = 'timecode' | 'frame';
+
 const TimecodeInput: React.FC = () => {
   const { playhead, setPlayhead, duration, fps } = useAnimationStore(state => ({
     playhead: state.playhead,
@@ -8,6 +10,11 @@ const TimecodeInput: React.FC = () => {
     duration: state.duration,
     fps: state.fps,
   }));
+
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
+    const stored = localStorage.getItem('wm-timecode-mode');
+    return stored === 'frame' ? 'frame' : 'timecode';
+  });
 
   const formatTimecode = (frame: number): string => {
     const totalSeconds = Math.floor(frame / fps);
@@ -17,6 +24,13 @@ const TimecodeInput: React.FC = () => {
     const ss = (totalSeconds % 60).toString().padStart(2, '0');
     const ff = (frame % fps).toString().padStart(2, '0');
     return `${mm}:${ss}:${ff}`;
+  };
+
+  const formatDisplay = (frame: number): string => {
+    if (displayMode === 'frame') {
+      return String(frame);
+    }
+    return formatTimecode(frame);
   };
 
   const parseTimecode = (value: string): number | null => {
@@ -36,15 +50,15 @@ const TimecodeInput: React.FC = () => {
     return null;
   };
 
-  const [inputValue, setInputValue] = useState(formatTimecode(playhead));
+  const [inputValue, setInputValue] = useState(formatDisplay(playhead));
   const [isEditing, setIsEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isEditing) {
-      setInputValue(formatTimecode(playhead));
+      setInputValue(formatDisplay(playhead));
     }
-  }, [playhead, fps, isEditing]);
+  }, [playhead, fps, isEditing, displayMode]);
 
   const handleFocus = () => {
     setIsEditing(true);
@@ -55,9 +69,9 @@ const TimecodeInput: React.FC = () => {
     const frame = parseTimecode(inputValue);
     if (frame !== null) {
       setPlayhead(frame);
-      setInputValue(formatTimecode(frame));
+      setInputValue(formatDisplay(frame));
     } else {
-      setInputValue(formatTimecode(playhead));
+      setInputValue(formatDisplay(playhead));
     }
     setIsEditing(false);
   };
@@ -67,29 +81,48 @@ const TimecodeInput: React.FC = () => {
       e.preventDefault();
       inputRef.current?.blur();
     } else if (e.key === 'Escape') {
-      setInputValue(formatTimecode(playhead));
+      setInputValue(formatDisplay(playhead));
       setIsEditing(false);
       inputRef.current?.blur();
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^0-9:]/g, '');
+    const value =
+      displayMode === 'frame'
+        ? e.target.value.replace(/[^0-9]/g, '')
+        : e.target.value.replace(/[^0-9:]/g, '');
     setInputValue(value);
   };
 
+  const handleToggleMode = () => {
+    const next: DisplayMode = displayMode === 'timecode' ? 'frame' : 'timecode';
+    localStorage.setItem('wm-timecode-mode', next);
+    setDisplayMode(next);
+  };
+
   return (
-    <input
-      ref={inputRef}
-      type="text"
-      value={inputValue}
-      onChange={handleChange}
-      onFocus={handleFocus}
-      onBlur={handleBlur}
-      onKeyDown={handleKeyDown}
-      className="font-mono text-xs w-16 px-1 py-0.5 rounded bg-wm-panel border border-wm-border text-wm-text focus:outline-none focus:border-wm-accent text-center tabular-nums"
-      title={`Frame ${playhead} of ${duration}\nType timecode (MM:SS:FF) or frame number`}
-    />
+    <div className="flex items-center gap-0.5">
+      <button
+        type="button"
+        onClick={handleToggleMode}
+        title={displayMode === 'timecode' ? 'Switch to frame number' : 'Switch to timecode'}
+        className="font-mono text-xs px-1 py-0.5 rounded text-wm-text opacity-50 hover:opacity-100 transition-opacity select-none leading-none"
+      >
+        {displayMode === 'timecode' ? 'TC' : '#'}
+      </button>
+      <input
+        ref={inputRef}
+        type="text"
+        value={inputValue}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        className="font-mono text-xs w-16 px-1 py-0.5 rounded bg-wm-panel border border-wm-border text-wm-text focus:outline-none focus:border-wm-accent text-center tabular-nums"
+        title={`Frame ${playhead} of ${duration}\nType timecode (MM:SS:FF) or frame number`}
+      />
+    </div>
   );
 };
 

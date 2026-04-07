@@ -131,10 +131,12 @@ interface AnimationState {
 
   // Keyframe selection & curve editing
   selectedKeyframeIds: string[];
+  selectedKeyframeAddresses: Array<{ layerId: string; property: string; keyframeId: string }>;
   presetsOpen: boolean;
   setSelectedKeyframes: (ids: string[]) => void;
   toggleKeyframeSelection: (id: string) => void;
   clearKeyframeSelection: () => void;
+  moveSelectedKeyframes: (deltaFrames: number) => void;
   togglePresetsPanel: () => void;
   updateKeyframeById: (
     layerId: string,
@@ -271,6 +273,7 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
         history: state.history.slice(0, -1),
         redoStack: [...state.redoStack, state.layers],
         selectedKeyframeIds: [],
+        selectedKeyframeAddresses: [],
       };
     });
   },
@@ -284,6 +287,7 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
         history: [...state.history, state.layers],
         redoStack: state.redoStack.slice(0, -1),
         selectedKeyframeIds: [],
+        selectedKeyframeAddresses: [],
       };
     });
   },
@@ -440,6 +444,7 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
 
   // Keyframe selection & curve editing
   selectedKeyframeIds: [],
+  selectedKeyframeAddresses: [],
   presetsOpen: false,
   copiedAnimation: null,
   copiedKeyframe: null,
@@ -480,18 +485,89 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
     });
   },
 
-  setSelectedKeyframes: ids => set({ selectedKeyframeIds: ids }),
+  setSelectedKeyframes: ids =>
+    set(state => {
+      // Rebuild addresses by scanning all layers → propertyTracks
+      const addresses: Array<{ layerId: string; property: string; keyframeId: string }> = [];
+      const idSet = new Set(ids);
+      for (const layer of state.layers) {
+        for (const [property, track] of Object.entries(layer.propertyTracks)) {
+          if (!track) continue;
+          for (const kf of track) {
+            if (idSet.has(kf.id)) {
+              addresses.push({ layerId: layer.id, property, keyframeId: kf.id });
+            }
+          }
+        }
+      }
+      return { selectedKeyframeIds: ids, selectedKeyframeAddresses: addresses };
+    }),
 
   toggleKeyframeSelection: id =>
     set(state => {
       const current = state.selectedKeyframeIds;
       if (current.includes(id)) {
-        return { selectedKeyframeIds: current.filter(kid => kid !== id) };
+        return {
+          selectedKeyframeIds: current.filter(kid => kid !== id),
+          selectedKeyframeAddresses: state.selectedKeyframeAddresses.filter(
+            addr => addr.keyframeId !== id
+          ),
+        };
       }
-      return { selectedKeyframeIds: [...current, id] };
+      // Find the address for this id
+      let newAddress: { layerId: string; property: string; keyframeId: string } | null = null;
+      outer: for (const layer of state.layers) {
+        for (const [property, track] of Object.entries(layer.propertyTracks)) {
+          if (!track) continue;
+          for (const kf of track) {
+            if (kf.id === id) {
+              newAddress = { layerId: layer.id, property, keyframeId: id };
+              break outer;
+            }
+          }
+        }
+      }
+      return {
+        selectedKeyframeIds: [...current, id],
+        selectedKeyframeAddresses: newAddress
+          ? [...state.selectedKeyframeAddresses, newAddress]
+          : state.selectedKeyframeAddresses,
+      };
     }),
 
-  clearKeyframeSelection: () => set({ selectedKeyframeIds: [] }),
+  clearKeyframeSelection: () =>
+    set({ selectedKeyframeIds: [], selectedKeyframeAddresses: [] }),
+
+  moveSelectedKeyframes: (deltaFrames: number) => {
+    set(state => {
+      if (state.selectedKeyframeAddresses.length === 0) return state;
+      const totalFrames = state.duration;
+      let updatedLayers = [...state.layers];
+
+      for (const addr of state.selectedKeyframeAddresses) {
+        const layerIndex = updatedLayers.findIndex(l => l.id === addr.layerId);
+        if (layerIndex === -1) continue;
+        const layer = updatedLayers[layerIndex];
+        const property = addr.property as PropertyType;
+        const track = layer.propertyTracks[property];
+        if (!track) continue;
+        const updatedTrack = track.map(kf => {
+          if (kf.id !== addr.keyframeId) return kf;
+          const newFrame = Math.max(0, Math.min(totalFrames, kf.frame + deltaFrames));
+          return { ...kf, frame: newFrame };
+        });
+        updatedTrack.sort((a, b) => a.frame - b.frame);
+        updatedLayers = updatedLayers.map((l, i) =>
+          i === layerIndex
+            ? { ...l, propertyTracks: { ...l.propertyTracks, [property]: updatedTrack } }
+            : l
+        );
+      }
+
+      const newHistory = [...state.history, state.layers].slice(-50);
+      return { layers: updatedLayers, history: newHistory, redoStack: [] };
+    });
+  },
 
   togglePresetsPanel: () => set(state => ({ presetsOpen: !state.presetsOpen })),
 
@@ -849,6 +925,7 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
       playhead: 0,
       selectedLayerId: null,
       selectedKeyframeIds: [],
+      selectedKeyframeAddresses: [],
       history: [],
     });
   },

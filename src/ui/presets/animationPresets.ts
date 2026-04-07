@@ -39,7 +39,7 @@ export const ANIMATION_PRESETS: AnimationPreset[] = [
   },
   {
     id: 'rise-up',
-    name: 'Rise Up',
+    name: 'Slide Up',
     emoji: '⬆️',
     category: 'entrance',
     durationFrames: 24,
@@ -56,7 +56,7 @@ export const ANIMATION_PRESETS: AnimationPreset[] = [
   },
   {
     id: 'drop-in',
-    name: 'Drop In',
+    name: 'Slide Down',
     emoji: '⬇️',
     category: 'entrance',
     durationFrames: 20,
@@ -107,7 +107,7 @@ export const ANIMATION_PRESETS: AnimationPreset[] = [
   },
   {
     id: 'scale-pop',
-    name: 'Scale Pop',
+    name: 'Zoom In Pop',
     emoji: '💥',
     category: 'entrance',
     durationFrames: 24,
@@ -183,7 +183,7 @@ export const ANIMATION_PRESETS: AnimationPreset[] = [
   },
   {
     id: 'slide-out-up',
-    name: 'Slide Out Up',
+    name: 'Slide Up Out',
     emoji: '🚀',
     category: 'exit',
     durationFrames: 24,
@@ -200,7 +200,7 @@ export const ANIMATION_PRESETS: AnimationPreset[] = [
   },
   {
     id: 'shrink-out',
-    name: 'Shrink Out',
+    name: 'Zoom Out',
     emoji: '🔻',
     category: 'exit',
     durationFrames: 20,
@@ -242,7 +242,7 @@ export const ANIMATION_PRESETS: AnimationPreset[] = [
   },
   {
     id: 'slide-out-down',
-    name: 'Slide Out Down',
+    name: 'Slide Down Out',
     emoji: '⬇️',
     category: 'exit',
     durationFrames: 22,
@@ -476,7 +476,7 @@ export const ANIMATION_PRESETS: AnimationPreset[] = [
   },
   {
     id: 'stagger-rise',
-    name: 'Stagger Rise',
+    name: 'Stagger In',
     emoji: '🎭',
     category: 'ad',
     durationFrames: 24,
@@ -493,7 +493,7 @@ export const ANIMATION_PRESETS: AnimationPreset[] = [
   },
   {
     id: 'slide-reveal',
-    name: 'Slide Reveal',
+    name: 'Wipe Left',
     emoji: '📽️',
     category: 'ad',
     durationFrames: 28,
@@ -530,7 +530,7 @@ export const ANIMATION_PRESETS: AnimationPreset[] = [
   {
     // Clean, fast reveal with micro-rise — ideal for body copy and captions
     id: 'type-on',
-    name: 'Type On',
+    name: 'Typewriter',
     emoji: '✍️',
     category: 'text',
     durationFrames: 14,
@@ -556,7 +556,7 @@ export const ANIMATION_PRESETS: AnimationPreset[] = [
   {
     // Text slams down from above with spring overshoot — headlines, impact text
     id: 'word-slam',
-    name: 'Word Slam',
+    name: 'Slam Down',
     emoji: '🔨',
     category: 'text',
     durationFrames: 14,
@@ -578,7 +578,7 @@ export const ANIMATION_PRESETS: AnimationPreset[] = [
   {
     // Squash & stretch: starts wide and compressed, snaps to normal — kinetic typography
     id: 'stretch-in',
-    name: 'Stretch In',
+    name: 'Wipe Right',
     emoji: '↔️',
     category: 'text',
     durationFrames: 18,

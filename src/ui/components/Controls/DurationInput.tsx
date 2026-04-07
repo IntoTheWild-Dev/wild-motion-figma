@@ -21,6 +21,7 @@ const DurationInput: React.FC = () => {
   }, [seconds]);
 
   const commitValue = (value: string) => {
+    isTypingRef.current = false;
     const inputSeconds = parseFloat(value);
     if (!isNaN(inputSeconds) && inputSeconds > 0) {
       const newFrames = Math.round(inputSeconds * fps);
@@ -29,7 +30,6 @@ const DurationInput: React.FC = () => {
     } else {
       setInputValue(seconds.toFixed(1));
     }
-    isTypingRef.current = false;
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -53,8 +53,8 @@ const DurationInput: React.FC = () => {
   };
 
   const handleStep = (delta: number) => {
-    const currentSeconds = parseFloat(inputValue) || seconds;
-    const newSeconds = Math.max(0.1, currentSeconds + delta);
+    commitValue(inputValue);
+    const newSeconds = Math.max(0.1, seconds + delta);
     const newFrames = Math.round(newSeconds * fps);
     setDuration(Math.max(1, newFrames));
     setInputValue((newFrames / fps).toFixed(1));
@@ -65,6 +65,7 @@ const DurationInput: React.FC = () => {
       <span className="text-xs text-wm-muted select-none">Dur</span>
       <div className="flex items-center">
         <button
+          type="button"
           onClick={() => handleStep(-0.1)}
           className="h-6 w-5 flex items-center justify-center text-xs text-wm-muted hover:text-wm-text hover:bg-wm-surface rounded-l border border-r-0 border-wm-border"
         >
@@ -81,6 +82,7 @@ const DurationInput: React.FC = () => {
           className="h-6 w-12 px-1 text-xs rounded-none bg-wm-panel border-y border-wm-border text-wm-text focus:outline-none focus:border-y-wm-accent text-right"
         />
         <button
+          type="button"
           onClick={() => handleStep(0.1)}
           className="h-6 w-5 flex items-center justify-center text-xs text-wm-muted hover:text-wm-text hover:bg-wm-surface rounded-r border border-l-0 border-wm-border"
         >

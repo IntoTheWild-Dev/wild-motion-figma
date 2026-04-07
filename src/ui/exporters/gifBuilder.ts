@@ -20,10 +20,16 @@ export interface GifExportOptions {
   totalFrames: number;
   getFrame: GifFrameProvider;
   onProgress?: (progress: number) => void;
-  /** Quality 1-30, lower = better quality but slower (default: 10) */
+  /** Quality 1-20, lower = better quality but slower (default: 10) */
   quality?: number;
   /** Loop count, 0 = infinite (default: 0) */
   repeat?: number;
+  /**
+   * Fraction of frames to capture (0 < fpsScale ≤ 1, default: 1).
+   * fpsScale 0.5 at 30 fps → capture every 2nd frame, delay doubles
+   * to preserve animation speed.
+   */
+  fpsScale?: number;
 }
 
 /**
@@ -35,9 +41,21 @@ export const generateGif = async (opts: GifExportOptions): Promise<Blob> => {
     width, height, fps, totalFrames,
     getFrame, onProgress,
     quality = 10, repeat = 0,
+    fpsScale = 1,
   } = opts;
 
-  const delay = Math.round(1000 / fps); // milliseconds per frame
+  // fpsScale shrinks the captured frame set; delay is scaled inversely so
+  // the output animation plays at the same wall-clock speed.
+  const effectiveFpsScale = Math.min(1, Math.max(0.01, fpsScale));
+  const step = Math.round(1 / effectiveFpsScale);          // e.g. 2 at 0.5
+  const delay = Math.round(1000 / (fps * effectiveFpsScale)); // e.g. 67ms→133ms
+
+  // Build the list of frame indices to capture
+  const frameIndices: number[] = [];
+  for (let i = 0; i < totalFrames; i += step) {
+    frameIndices.push(i);
+  }
+  const captureCount = frameIndices.length;
 
   // Create an offscreen canvas to draw each frame
   const canvas = document.createElement('canvas');
@@ -47,7 +65,7 @@ export const generateGif = async (opts: GifExportOptions): Promise<Blob> => {
 
   // Create GIF encoder with inline worker
   const gif = new GIF({
-    workers: 2,
+    workers: 4,
     quality,
     width,
     height,
@@ -55,20 +73,31 @@ export const generateGif = async (opts: GifExportOptions): Promise<Blob> => {
     repeat,
   });
 
-  // Add each frame
-  for (let i = 0; i < totalFrames; i++) {
-    const bitmap = await getFrame(i);
-    if (!bitmap) continue;
+  // Add frames in batches so multiple getFrame calls run concurrently.
+  // addFrame itself is sync and must stay sequential (gif.js requirement).
+  const BATCH_SIZE = 6;
+  let captured = 0;
 
-    // Draw bitmap onto canvas
-    ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(bitmap, 0, 0, width, height);
-    bitmap.close();
+  for (let b = 0; b < frameIndices.length; b += BATCH_SIZE) {
+    const batch = frameIndices.slice(b, b + BATCH_SIZE);
 
-    // Add frame — copy the canvas data (gif.js will process it in the worker)
-    gif.addFrame(ctx, { copy: true, delay });
+    // Fetch this batch in parallel
+    const bitmaps = await Promise.all(batch.map((idx) => getFrame(idx)));
 
-    onProgress?.((i + 1) / totalFrames * 0.7); // 70% for frame capture
+    // Add resolved frames to the GIF sequentially
+    for (const bitmap of bitmaps) {
+      if (!bitmap) { captured++; continue; }
+
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(bitmap, 0, 0, width, height);
+      bitmap.close();
+
+      // Add frame — copy the canvas data (gif.js will process it in the worker)
+      gif.addFrame(ctx, { copy: true, delay });
+
+      captured++;
+      onProgress?.(captured / captureCount * 0.7); // 70% for frame capture
+    }
   }
 
   // Render GIF

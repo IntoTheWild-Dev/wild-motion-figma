@@ -42,11 +42,16 @@ const Timeline: React.FC = () => {
     selectedKeyframeIds,
     setSelectedKeyframes,
     clearKeyframeSelection,
+    toggleKeyframeSelection,
+    moveSelectedKeyframes,
     updateKeyframeById,
     removeLayer,
     copiedAnimation,
     copyLayerAnimation,
     pasteLayerAnimation,
+    copiedKeyframe,
+    copyKeyframe,
+    pasteKeyframe,
   } = useAnimationStore(state => ({
     layers: state.layers,
     selectedLayerId: state.selectedLayerId,
@@ -65,17 +70,31 @@ const Timeline: React.FC = () => {
     selectedKeyframeIds: state.selectedKeyframeIds,
     setSelectedKeyframes: state.setSelectedKeyframes,
     clearKeyframeSelection: state.clearKeyframeSelection,
+    toggleKeyframeSelection: state.toggleKeyframeSelection,
+    moveSelectedKeyframes: state.moveSelectedKeyframes,
     updateKeyframeById: state.updateKeyframeById,
     removeLayer: state.removeLayer,
     copiedAnimation: state.copiedAnimation,
     copyLayerAnimation: state.copyLayerAnimation,
     pasteLayerAnimation: state.pasteLayerAnimation,
+    copiedKeyframe: state.copiedKeyframe,
+    copyKeyframe: state.copyKeyframe,
+    pasteKeyframe: state.pasteKeyframe,
   }));
 
   const trackAreaRef = useRef<HTMLDivElement>(null);
   const [trackWidth, setTrackWidth] = useState(0);
   // Track which layer IDs are collapsed (starts expanded by default)
   const [collapsedLayers, setCollapsedLayers] = useState<Set<string>>(new Set());
+
+  // Rubber-band (drag-to-select) state — local only
+  const [rubberBand, setRubberBand] = useState<{
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
+  const rubberBandContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!trackAreaRef.current) return;
@@ -85,6 +104,85 @@ const Timeline: React.FC = () => {
     obs.observe(trackAreaRef.current);
     return () => obs.disconnect();
   }, []);
+
+  // Keyboard shortcuts: Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z, Cmd/Ctrl+C, Cmd/Ctrl+V
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey;
+      if (!isMod) return;
+
+      // Skip if the user is typing inside an editable element
+      const target = e.target as HTMLElement;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+
+      if (key === 'z' && !e.shiftKey) {
+        // Cmd+Z → Undo
+        e.preventDefault();
+        e.stopPropagation();
+        undo();
+      } else if (key === 'z' && e.shiftKey) {
+        // Cmd+Shift+Z → Redo
+        e.preventDefault();
+        e.stopPropagation();
+        redo();
+      } else if (key === 'c') {
+        // Cmd+C → Copy selected keyframe
+        if (selectedKeyframeIds.length === 0) return;
+        const keyframeId = selectedKeyframeIds[0];
+        // Find the layer and property that own this keyframe
+        let foundLayerId: string | null = null;
+        let foundProperty: string | null = null;
+        outer: for (const layer of layers) {
+          for (const [prop, track] of Object.entries(layer.propertyTracks)) {
+            if (track.some(kf => kf.id === keyframeId)) {
+              foundLayerId = layer.id;
+              foundProperty = prop;
+              break outer;
+            }
+          }
+        }
+        if (foundLayerId && foundProperty) {
+          e.preventDefault();
+          e.stopPropagation();
+          copyKeyframe(foundLayerId, foundProperty as import('@/types/animation.types').PropertyType, keyframeId);
+        }
+      } else if (key === 'v') {
+        // Cmd+V → Paste keyframe at current playhead
+        if (!copiedKeyframe || selectedKeyframeIds.length === 0) return;
+        const keyframeId = selectedKeyframeIds[0];
+        // Find the layer and property that own the currently selected keyframe
+        let foundLayerId: string | null = null;
+        let foundProperty: string | null = null;
+        outer: for (const layer of layers) {
+          for (const [prop, track] of Object.entries(layer.propertyTracks)) {
+            if (track.some(kf => kf.id === keyframeId)) {
+              foundLayerId = layer.id;
+              foundProperty = prop;
+              break outer;
+            }
+          }
+        }
+        if (foundLayerId && foundProperty) {
+          e.preventDefault();
+          e.stopPropagation();
+          pasteKeyframe(foundLayerId, foundProperty as import('@/types/animation.types').PropertyType, playhead);
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, { capture: true });
+    };
+  }, [undo, redo, copyKeyframe, pasteKeyframe, copiedKeyframe, selectedKeyframeIds, layers, playhead]);
 
   const ppf = trackWidth / Math.max(duration, 1);
 
@@ -146,6 +244,111 @@ const Timeline: React.FC = () => {
     },
     [ppf, duration, setPlayhead]
   );
+
+  // Rubber-band handlers — fire on the keyframe tracks scrollable container
+  const handleTracksPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // Only start rubber-band on the background, not on keyframe dots
+      const target = e.target as HTMLElement;
+      // Keyframe dots have class "cursor-grab" or are inside a div with it
+      if (
+        target.classList.contains('cursor-grab') ||
+        target.closest('.cursor-grab') !== null
+      ) {
+        return;
+      }
+      // Prevent interfering with scroll
+      if (e.button !== 0) return;
+
+      const container = rubberBandContainerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top + container.scrollTop;
+      setRubberBand({ startX: x, startY: y, currentX: x, currentY: y });
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    []
+  );
+
+  const handleTracksPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!rubberBand) return;
+      const container = rubberBandContainerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top + container.scrollTop;
+      setRubberBand(prev => (prev ? { ...prev, currentX: x, currentY: y } : prev));
+    },
+    [rubberBand]
+  );
+
+  const handleTracksPointerUp = useCallback(
+    (_e: React.PointerEvent<HTMLDivElement>) => {
+      if (!rubberBand || ppf <= 0) {
+        setRubberBand(null);
+        return;
+      }
+
+      // Compute pixel rect of rubber band
+      const rectLeft = Math.min(rubberBand.startX, rubberBand.currentX);
+      const rectRight = Math.max(rubberBand.startX, rubberBand.currentX);
+      const rectTop = Math.min(rubberBand.startY, rubberBand.currentY);
+      const rectBottom = Math.max(rubberBand.startY, rubberBand.currentY);
+
+      // Convert x pixel range to frame range
+      const frameStart = Math.floor(rectLeft / ppf);
+      const frameEnd = Math.ceil(rectRight / ppf);
+
+      // Walk all visible tracks to find matching keyframes
+      const matchingIds: string[] = [];
+      let rowY = 0; // tracks cumulative Y position within the container
+
+      for (const layer of layers) {
+        const isCollapsed = collapsedLayers.has(layer.id);
+        // Header spacer row
+        rowY += HEADER_ROW_HEIGHT;
+        if (!isCollapsed) {
+          for (const prop of PROPERTIES) {
+            const track = layer.propertyTracks?.[prop] || [];
+            const rowTop = rowY;
+            const rowBottom = rowY + TRACK_ROW_HEIGHT;
+            // Check if this row intersects the rubber-band vertically
+            if (rowBottom > rectTop && rowTop < rectBottom) {
+              for (const kf of track) {
+                if (kf.frame >= frameStart && kf.frame <= frameEnd) {
+                  matchingIds.push(kf.id);
+                }
+              }
+            }
+            rowY += TRACK_ROW_HEIGHT;
+          }
+        }
+      }
+
+      if (matchingIds.length > 0) {
+        setSelectedKeyframes(matchingIds);
+      }
+
+      setRubberBand(null);
+    },
+    [rubberBand, ppf, layers, collapsedLayers, setSelectedKeyframes]
+  );
+
+  // Compute rubber-band overlay rect (relative to the container, accounting for scroll)
+  const rubberBandStyle = React.useMemo(() => {
+    if (!rubberBand) return null;
+    const container = rubberBandContainerRef.current;
+    const scrollTop = container ? container.scrollTop : 0;
+    return {
+      left: Math.min(rubberBand.startX, rubberBand.currentX),
+      // Adjust top back to viewport-relative coords (subtract scroll)
+      top: Math.min(rubberBand.startY, rubberBand.currentY) - scrollTop,
+      width: Math.abs(rubberBand.currentX - rubberBand.startX),
+      height: Math.abs(rubberBand.currentY - rubberBand.startY),
+    };
+  }, [rubberBand]);
 
   // Ruler ticks
   const rulerTicks: React.ReactNode[] = [];
@@ -462,8 +665,12 @@ const Timeline: React.FC = () => {
 
         {/* Keyframe tracks */}
         <div
+          ref={rubberBandContainerRef}
           className="flex-1 relative overflow-y-auto overflow-x-hidden"
           onClick={handleTrackAreaClick}
+          onPointerDown={handleTracksPointerDown}
+          onPointerMove={handleTracksPointerMove}
+          onPointerUp={handleTracksPointerUp}
         >
           {layers.map(layer => {
             const isCollapsed = collapsedLayers.has(layer.id);
@@ -489,16 +696,18 @@ const Timeline: React.FC = () => {
                       isLayerSelected={selectedLayerId === layer.id}
                       isPropertySelected={selectedLayerId === layer.id && selectedProperty === prop}
                       height={TRACK_ROW_HEIGHT}
-                      selectedKeyframeIds={
-                        selectedLayerId === layer.id && selectedProperty === prop
-                          ? selectedKeyframeIds
-                          : []
-                      }
+                      selectedKeyframeIds={selectedKeyframeIds}
+                      allSelectedKeyframeIds={selectedKeyframeIds}
                       onSelectProperty={() => {
                         setSelectedLayerId(layer.id);
                         setSelectedProperty(prop);
                       }}
                       onSelectKeyframe={id => setSelectedKeyframes([id])}
+                      onToggleKeyframeSelection={id => {
+                        setSelectedLayerId(layer.id);
+                        setSelectedProperty(prop);
+                        toggleKeyframeSelection(id);
+                      }}
                       onAddKeyframe={frame => {
                         const defaults: Record<string, number> = {
                           x: 0,
@@ -515,6 +724,7 @@ const Timeline: React.FC = () => {
                       onDragKeyframe={(kfId, newFrame) =>
                         updateKeyframeById(layer.id, prop, kfId, { frame: newFrame })
                       }
+                      onMoveSelectedKeyframes={moveSelectedKeyframes}
                     />
                   ))}
               </React.Fragment>
@@ -524,6 +734,20 @@ const Timeline: React.FC = () => {
             <div
               className="absolute top-0 bottom-0 w-0.5 bg-wm-playhead/70 pointer-events-none z-10"
               style={{ left: playheadX }}
+            />
+          )}
+          {/* Rubber-band selection overlay */}
+          {rubberBandStyle && (
+            <div
+              className="absolute pointer-events-none z-20"
+              style={{
+                left: rubberBandStyle.left,
+                top: rubberBandStyle.top,
+                width: rubberBandStyle.width,
+                height: rubberBandStyle.height,
+                border: '1px solid rgba(100, 160, 255, 0.8)',
+                backgroundColor: 'rgba(100, 160, 255, 0.12)',
+              }}
             />
           )}
         </div>

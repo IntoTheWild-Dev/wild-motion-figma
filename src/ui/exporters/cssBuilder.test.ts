@@ -35,17 +35,16 @@ describe('cssBuilder', () => {
 
     const css = generateCss(layers, 30);
 
-    // Each property gets its own named @keyframes block
-    expect(css).toContain('@keyframes wm-layer1-x');
-    expect(css).toContain('@keyframes wm-layer1-y');
+    // All transform properties are merged into a single combined @keyframes block
+    expect(css).toContain('@keyframes wm-layer1-transform');
 
-    // Keyframe stops use CSS transform declarations
-    expect(css).toContain('transform: translateX(0px)');
-    expect(css).toContain('transform: translateX(100px)');
-    expect(css).toContain('transform: translateY(0px)');
-    expect(css).toContain('transform: translateY(50px)');
+    // Keyframe stops use CSS transform shorthand with all transform components
+    expect(css).toContain('translateX(0px)');
+    expect(css).toContain('translateX(100px)');
+    expect(css).toContain('translateY(0px)');
+    expect(css).toContain('translateY(50px)');
 
-    // Animation class
+    // Animation class uses the layer id directly
     expect(css).toContain('.animated-layer-1 {');
   });
 });

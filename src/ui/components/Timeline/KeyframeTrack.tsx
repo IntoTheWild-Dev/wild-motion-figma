@@ -13,11 +13,15 @@ interface KeyframeTrackProps {
   isPropertySelected: boolean;
   height: number;
   selectedKeyframeIds: string[];
+  /** All selected keyframe ids across ALL tracks (for multi-drag detection) */
+  allSelectedKeyframeIds: string[];
   onSelectProperty: () => void;
   onSelectKeyframe: (keyframeId: string) => void;
+  onToggleKeyframeSelection: (keyframeId: string) => void;
   onAddKeyframe: (frame: number) => void;
   onRemoveKeyframe: (frame: number) => void;
   onDragKeyframe?: (keyframeId: string, newFrame: number) => void;
+  onMoveSelectedKeyframes?: (deltaFrames: number) => void;
 }
 
 const PROP_COLOR: Record<PropertyType, string> = {
@@ -39,11 +43,14 @@ const KeyframeTrack: React.FC<KeyframeTrackProps> = ({
   isPropertySelected,
   height,
   selectedKeyframeIds,
+  allSelectedKeyframeIds,
   onSelectProperty,
   onSelectKeyframe,
+  onToggleKeyframeSelection,
   onAddKeyframe,
   onRemoveKeyframe,
   onDragKeyframe,
+  onMoveSelectedKeyframes,
 }) => {
   const keyframes: Keyframe[] = layer.propertyTracks?.[property] || [];
   const color = PROP_COLOR[property];
@@ -54,6 +61,9 @@ const KeyframeTrack: React.FC<KeyframeTrackProps> = ({
     kfId: string;
     startX: number;
     startFrame: number;
+    isMulti: boolean;
+    /** accumulated frames already applied during this drag session */
+    appliedDelta: number;
   } | null>(null);
   const draggingRef = useRef(dragging);
   draggingRef.current = dragging;
@@ -81,9 +91,14 @@ const KeyframeTrack: React.FC<KeyframeTrackProps> = ({
     (e: React.MouseEvent, kf: Keyframe) => {
       e.stopPropagation();
       onSelectProperty();
-      onSelectKeyframe(kf.id);
+      if (e.shiftKey) {
+        // Shift-click: toggle this keyframe in the multi-selection
+        onToggleKeyframeSelection(kf.id);
+      } else {
+        onSelectKeyframe(kf.id);
+      }
     },
-    [onSelectProperty, onSelectKeyframe]
+    [onSelectProperty, onSelectKeyframe, onToggleKeyframeSelection]
   );
 
   const handleKeyframeDoubleClick = useCallback(
@@ -100,11 +115,25 @@ const KeyframeTrack: React.FC<KeyframeTrackProps> = ({
       if (!onDragKeyframe) return;
       e.stopPropagation();
       e.preventDefault();
-      setDragging({ kfId: kf.id, startX: e.clientX, startFrame: kf.frame });
-      onSelectProperty();
-      onSelectKeyframe(kf.id);
+
+      const isAlreadyInSelection = allSelectedKeyframeIds.includes(kf.id);
+
+      if (!isAlreadyInSelection) {
+        // Not in selection — clear multi-select and start single drag
+        onSelectProperty();
+        onSelectKeyframe(kf.id);
+      }
+      // If already in selection, keep selection intact and drag all selected
+
+      setDragging({
+        kfId: kf.id,
+        startX: e.clientX,
+        startFrame: kf.frame,
+        isMulti: isAlreadyInSelection,
+        appliedDelta: 0,
+      });
     },
-    [onDragKeyframe, onSelectProperty, onSelectKeyframe]
+    [onDragKeyframe, onSelectProperty, onSelectKeyframe, allSelectedKeyframeIds]
   );
 
   // Window-level move/up so drag works even outside the track
@@ -113,11 +142,26 @@ const KeyframeTrack: React.FC<KeyframeTrackProps> = ({
 
     const handleMove = (e: PointerEvent) => {
       const d = draggingRef.current;
-      if (!d || !onDragKeyframe || ppf <= 0) return;
+      if (!d || ppf <= 0) return;
+
       const deltaX = e.clientX - d.startX;
-      const deltaFrames = Math.round(deltaX / ppf);
-      const newFrame = Math.max(0, Math.min(duration, d.startFrame + deltaFrames));
-      onDragKeyframe(d.kfId, newFrame);
+      const totalDelta = Math.round(deltaX / ppf);
+
+      if (d.isMulti && onMoveSelectedKeyframes) {
+        // Move all selected keyframes together
+        // Calculate the incremental delta since last applied
+        const incrementalDelta = totalDelta - d.appliedDelta;
+        if (incrementalDelta !== 0) {
+          onMoveSelectedKeyframes(incrementalDelta);
+          // Update appliedDelta in the ref so next move is incremental
+          draggingRef.current = { ...d, appliedDelta: totalDelta };
+          setDragging(prev => (prev ? { ...prev, appliedDelta: totalDelta } : prev));
+        }
+      } else if (!d.isMulti && onDragKeyframe) {
+        // Single keyframe drag (existing behaviour)
+        const newFrame = Math.max(0, Math.min(duration, d.startFrame + totalDelta));
+        onDragKeyframe(d.kfId, newFrame);
+      }
     };
 
     const handleUp = () => {
@@ -130,7 +174,7 @@ const KeyframeTrack: React.FC<KeyframeTrackProps> = ({
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
     };
-  }, [dragging, onDragKeyframe, ppf, duration]);
+  }, [dragging, onDragKeyframe, onMoveSelectedKeyframes, ppf, duration]);
 
   return (
     <div

@@ -43,4 +43,9 @@ describe('gifBuilder', () => {
     const blob = await generateGif(makeOpts({ quality: 5, repeat: 1 }));
     expect(blob).toBeInstanceOf(Blob);
   });
+
+  it('accepts optional fpsScale option', async () => {
+    const blob = await generateGif(makeOpts({ fpsScale: 0.5 }));
+    expect(blob).toBeInstanceOf(Blob);
+  });
 });

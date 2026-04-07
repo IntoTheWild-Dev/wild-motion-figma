@@ -46,7 +46,7 @@ const PropertyValueInput: React.FC<PropertyValueInputProps> = ({ layer, property
         (layer.baseValues?.[property as keyof typeof layer.baseValues] as number | undefined) ?? 0;
       return base + raw;
     }
-    if (property === 'opacity') return raw * 100;
+    if (property === 'opacity') return raw;
     return raw;
   }, [layer, property, playhead]);
 
@@ -75,7 +75,7 @@ const PropertyValueInput: React.FC<PropertyValueInputProps> = ({ layer, property
   const parseValue = (str: string, prop: PropertyType): number | null => {
     const num = parseFloat(str);
     if (isNaN(num)) return null;
-    if (prop === 'opacity') return num / 100;
+    if (prop === 'opacity') return num;
     return num;
   };
 

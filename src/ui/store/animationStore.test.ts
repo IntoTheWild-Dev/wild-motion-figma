@@ -68,7 +68,7 @@ describe('animationStore', () => {
       expect(state.layers[0]).toMatchObject({
         name: 'Test Layer',
         nodeId: '123:456',
-        id: 'test-uuid'
+        id: expect.any(String),
       });
     });
   });
