@@ -73,20 +73,20 @@ const getValueAtFrame = (keyframes: Keyframe[], frame: number): number => {
 // Helper function to get default value for a property type
 const getDefaultValueForProperty = (property: PropertyType): number => {
   switch (property) {
-    case 'x':
-    case 'y':
-      return 0; // Default position
-    case 'scaleX':
-    case 'scaleY':
-      return 1; // Default scale (100%)
-    case 'rotation':
-      return 0; // Default rotation
-    case 'opacity':
-      return 100; // Default opacity (100%)
-    case 'fill':
-      return 0; // This is handled differently (color), but returning 0 for now
-    default:
-      return 0;
+  case 'x':
+  case 'y':
+    return 0; // Default position
+  case 'scaleX':
+  case 'scaleY':
+    return 1; // Default scale (100%)
+  case 'rotation':
+    return 0; // Default rotation
+  case 'opacity':
+    return 100; // Default opacity (100%)
+  case 'fill':
+    return 0; // This is handled differently (color), but returning 0 for now
+  default:
+    return 0;
   }
 };
 
