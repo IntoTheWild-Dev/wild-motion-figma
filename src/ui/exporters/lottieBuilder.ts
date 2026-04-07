@@ -1,5 +1,5 @@
 // src/ui/exporters/lottieBuilder.ts
-import type { Layer, PropertyType } from '@/types/animation.types';
+import type { Layer, PropertyType, Keyframe, EasingPreset } from '@/types/animation.types';
 
 /**
  * Lottie JSON structure types (simplified for MVP)
@@ -42,6 +42,48 @@ interface IKF {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type IK = any;
 
+interface LottieBezier {
+  i: { x: number; y: number };
+  o: { x: number; y: number };
+}
+
+/**
+ * Convert an EasingPreset to Lottie keyframe bezier handles.
+ *
+ * Lottie convention:
+ *   o = outgoing tangent from start value  → CSS cubic-bezier p1 (x1, y1)
+ *   i = incoming tangent into end value    → CSS cubic-bezier p2 (x2, y2)
+ *
+ * For cubic-bezier(p1x, p1y, p2x, p2y):
+ *   o = { x: p1x, y: p1y }
+ *   i = { x: p2x, y: p2y }
+ */
+const easingToLottieBezier = (easing: EasingPreset | undefined): LottieBezier => {
+  if (!easing || easing.type === 'linear') {
+    return { o: { x: 0, y: 0 }, i: { x: 1, y: 1 } };
+  }
+  const [p1x, p1y, p2x, p2y] = easing.points ?? [0.25, 0.1, 0.25, 1];
+  return {
+    o: { x: p1x, y: p1y },
+    i: { x: p2x, y: p2y },
+  };
+};
+
+/**
+ * Linear interpolation between keyframes at an arbitrary frame.
+ * Returns the default value when the track is empty.
+ */
+const interpolateTrack = (track: Keyframe[], frame: number, defaultVal = 0): number => {
+  if (track.length === 0) return defaultVal;
+  const sorted = [...track].sort((a, b) => a.frame - b.frame);
+  if (frame <= sorted[0].frame) return sorted[0].value;
+  if (frame >= sorted[sorted.length - 1].frame) return sorted[sorted.length - 1].value;
+  const prev = sorted.filter(kf => kf.frame <= frame).pop()!;
+  const next = sorted.find(kf => kf.frame > frame)!;
+  const t = (frame - prev.frame) / (next.frame - prev.frame);
+  return prev.value + (next.value - prev.value) * t;
+};
+
 /**
  * Generate Lottie JSON from our layers and keyframes
  */
@@ -72,66 +114,53 @@ export const generateLottie = (layers: Layer[], fps: number, width = 800, height
   const lottieLayers: ILayer[] = [];
 
   for (const layer of layers) {
-    // Determine if any properties are animated
     const hasAnimation = Object.values(layer.propertyTracks).some(tracks => tracks.length > 0);
 
     const lottieLayer: ILayer = {
       nm: layer.name,
-      ty: hasAnimation ? 4 : 1, // 4 for shape layer (animated), 1 for solid (static)
+      ty: hasAnimation ? 4 : 1,
       ip: 0,
       op: maxFrame,
       st: 0,
       sr: 1,
       ks: {
         a: {
-          p: { a: 0, k: {} }, // position
-          s: { a: 0, k: {} }, // scale
-          r: { a: 0, k: {} }, // rotation
-          o: { a: 0, k: {} }  // opacity
+          p: { a: 0, k: {} },
+          s: { a: 0, k: {} },
+          r: { a: 0, k: {} },
+          o: { a: 0, k: {} }
         }
       }
     };
 
-    // Position requires merged [x, y, z] arrays in Lottie format
-    const positionKeyframesX = layer.propertyTracks['x'] || [];
-    const positionKeyframesY = layer.propertyTracks['y'] || [];
+    // --- Position (merged x/y into [x, y, z]) ---
+    const posXKfs = layer.propertyTracks['x'] || [];
+    const posYKfs = layer.propertyTracks['y'] || [];
 
-    if (positionKeyframesX.length > 0 || positionKeyframesY.length > 0) {
-      // Collect all unique frame numbers from both X and Y tracks
+    if (posXKfs.length > 0 || posYKfs.length > 0) {
       const allFrames = Array.from(
-        new Set([
-          ...positionKeyframesX.map(kf => kf.frame),
-          ...positionKeyframesY.map(kf => kf.frame)
-        ])
+        new Set([...posXKfs.map(kf => kf.frame), ...posYKfs.map(kf => kf.frame)])
       ).sort((a, b) => a - b);
 
-      // Helper: get value at frame from a track (or default 0)
-      const getVal = (track: typeof positionKeyframesX, frame: number): number => {
-        const exact = track.find(kf => kf.frame === frame);
-        if (exact) return exact.value;
-        // Linear interpolation fallback between surrounding keyframes
-        const sorted = [...track].sort((a, b) => a.frame - b.frame);
-        if (sorted.length === 0) return 0;
-        if (frame <= sorted[0].frame) return sorted[0].value;
-        if (frame >= sorted[sorted.length - 1].frame) return sorted[sorted.length - 1].value;
-        const prev = sorted.filter(kf => kf.frame <= frame).pop()!;
-        const next = sorted.find(kf => kf.frame > frame)!;
-        const t = (frame - prev.frame) / (next.frame - prev.frame);
-        return prev.value + (next.value - prev.value) * t;
-      };
-
       const mergedKeyframes = allFrames.map((frame, i) => {
-        const x = getVal(positionKeyframesX, frame);
-        const y = getVal(positionKeyframesY, frame);
+        const x = interpolateTrack(posXKfs, frame);
+        const y = interpolateTrack(posYKfs, frame);
         const entry: Record<string, unknown> = { t: frame, s: [x, y, 0] };
-        // Add end value for all but the last frame
+
         if (i < allFrames.length - 1) {
-          const nx = getVal(positionKeyframesX, allFrames[i + 1]);
-          const ny = getVal(positionKeyframesY, allFrames[i + 1]);
-          entry.e = [nx, ny, 0];
+          entry.e = [
+            interpolateTrack(posXKfs, allFrames[i + 1]),
+            interpolateTrack(posYKfs, allFrames[i + 1]),
+            0,
+          ];
+          // Easing: prefer x keyframe at this frame, fall back to y
+          const xKf = posXKfs.find(kf => kf.frame === frame);
+          const yKf = posYKfs.find(kf => kf.frame === frame);
+          const bezier = easingToLottieBezier(xKf?.easing ?? yKf?.easing);
+          entry.i = bezier.i;
+          entry.o = bezier.o;
         }
-        entry.i = { x: 0.833, y: 0.833 };
-        entry.o = { x: 0.167, y: 0.167 };
+
         return entry;
       });
 
@@ -141,36 +170,33 @@ export const generateLottie = (layers: Layer[], fps: number, width = 800, height
       };
     }
 
-    // Handle scale (merged scaleX/scaleY into [sx, sy, 1] arrays)
+    // --- Scale (merged scaleX/scaleY into [sx, sy, 1], 0-100 range) ---
     const scaleXKfs = layer.propertyTracks['scaleX'] || [];
     const scaleYKfs = layer.propertyTracks['scaleY'] || [];
+
     if (scaleXKfs.length > 0 || scaleYKfs.length > 0) {
-      const allScaleFrames = Array.from(
+      const allFrames = Array.from(
         new Set([...scaleXKfs.map(kf => kf.frame), ...scaleYKfs.map(kf => kf.frame)])
       ).sort((a, b) => a - b);
 
-      const getScaleVal = (track: typeof scaleXKfs, frame: number): number => {
-        const exact = track.find(kf => kf.frame === frame);
-        if (exact) return exact.value * 100; // Lottie scale is 0-100
-        if (track.length === 0) return 100;
-        const sorted = [...track].sort((a, b) => a.frame - b.frame);
-        if (frame <= sorted[0].frame) return sorted[0].value * 100;
-        if (frame >= sorted[sorted.length - 1].frame) return sorted[sorted.length - 1].value * 100;
-        const prev = sorted.filter(kf => kf.frame <= frame).pop()!;
-        const next = sorted.find(kf => kf.frame > frame)!;
-        const t = (frame - prev.frame) / (next.frame - prev.frame);
-        return (prev.value + (next.value - prev.value) * t) * 100;
-      };
-
-      const scaleMerged = allScaleFrames.map((frame, i) => {
-        const sx = getScaleVal(scaleXKfs, frame);
-        const sy = getScaleVal(scaleYKfs, frame);
+      const scaleMerged = allFrames.map((frame, i) => {
+        const sx = interpolateTrack(scaleXKfs, frame, 1) * 100;
+        const sy = interpolateTrack(scaleYKfs, frame, 1) * 100;
         const entry: Record<string, unknown> = { t: frame, s: [sx, sy, 1] };
-        if (i < allScaleFrames.length - 1) {
-          entry.e = [getScaleVal(scaleXKfs, allScaleFrames[i + 1]), getScaleVal(scaleYKfs, allScaleFrames[i + 1]), 1];
+
+        if (i < allFrames.length - 1) {
+          entry.e = [
+            interpolateTrack(scaleXKfs, allFrames[i + 1], 1) * 100,
+            interpolateTrack(scaleYKfs, allFrames[i + 1], 1) * 100,
+            1,
+          ];
+          const xKf = scaleXKfs.find(kf => kf.frame === frame);
+          const yKf = scaleYKfs.find(kf => kf.frame === frame);
+          const bezier = easingToLottieBezier(xKf?.easing ?? yKf?.easing);
+          entry.i = bezier.i;
+          entry.o = bezier.o;
         }
-        entry.i = { x: 0.833, y: 0.833 };
-        entry.o = { x: 0.167, y: 0.167 };
+
         return entry;
       });
 
@@ -180,12 +206,17 @@ export const generateLottie = (layers: Layer[], fps: number, width = 800, height
       };
     }
 
-    // Handle rotation and opacity
-    const propertiesToCheck: Array<{ prop: PropertyType; lottieProp: keyof IKS['a']; toValue: (v: number) => number }> = [
+    // --- Rotation and Opacity ---
+    const scalarProps: Array<{
+      prop: PropertyType;
+      lottieProp: keyof IKS['a'];
+      toValue: (v: number) => number;
+    }> = [
       { prop: 'rotation', lottieProp: 'r', toValue: v => v },
-      { prop: 'opacity', lottieProp: 'o', toValue: v => v } // our opacity is 0-100, Lottie opacity is also 0-100
+      { prop: 'opacity',  lottieProp: 'o', toValue: v => v }, // store 0-100 = Lottie 0-100
     ];
-    for (const { prop, lottieProp, toValue } of propertiesToCheck) {
+
+    for (const { prop, lottieProp, toValue } of scalarProps) {
       const keyframes = layer.propertyTracks[prop] || [];
       if (keyframes.length > 0) {
         const sorted = [...keyframes].sort((a, b) => a.frame - b.frame);
@@ -194,10 +225,16 @@ export const generateLottie = (layers: Layer[], fps: number, width = 800, height
           k: sorted.length === 1
             ? toValue(sorted[0].value)
             : sorted.map((kf, i) => {
-              const entry: Record<string, unknown> = { t: kf.frame, s: [toValue(kf.value)] };
-              if (i < sorted.length - 1) entry.e = [toValue(sorted[i + 1].value)];
-              entry.i = { x: 0.833, y: 0.833 };
-              entry.o = { x: 0.167, y: 0.167 };
+              const entry: Record<string, unknown> = {
+                t: kf.frame,
+                s: [toValue(kf.value)],
+              };
+              if (i < sorted.length - 1) {
+                entry.e = [toValue(sorted[i + 1].value)];
+                const bezier = easingToLottieBezier(kf.easing);
+                entry.i = bezier.i;
+                entry.o = bezier.o;
+              }
               return entry;
             })
         };

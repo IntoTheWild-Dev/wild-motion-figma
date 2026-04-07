@@ -33,6 +33,25 @@ const Mp4Exporter: React.FC = () => {
     setIsExporting(true);
     setProgress(0);
 
+    let resolveFrame: ((bitmap: ImageBitmap) => void) | null = null;
+    let rejectFrame: ((e: Error) => void) | null = null;
+
+    const frameResultHandler = async (event: MessageEvent) => {
+      if (event.origin !== 'https://www.figma.com' && event.origin !== 'null' && event.origin !== '') return;
+      const msg = event.data?.pluginMessage ?? event.data;
+      if (!msg) return;
+
+      if (msg.type === 'FRAME_EXPORT_RESULT' && resolveFrame) {
+        const blob = new Blob([msg.bytes], { type: 'image/png' });
+        const bitmap = await createImageBitmap(blob);
+        resolveFrame(bitmap);
+      } else if (msg.type === 'FRAME_EXPORT_ERROR' && rejectFrame) {
+        rejectFrame(new Error(msg.error));
+      }
+    };
+
+    window.addEventListener('message', frameResultHandler);
+
     try {
       const supported = await supportsWebCodecsH264();
       if (!supported) {
@@ -46,32 +65,6 @@ const Mp4Exporter: React.FC = () => {
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d')!;
-
-      // We render each frame by:
-      // 1. Sending frame values to the plugin
-      // 2. Waiting for the plugin to export a PNG
-      // 3. Drawing that PNG to our hidden canvas
-      // 4. Passing canvas ImageBitmaps to the encoder
-
-      // Set up a promise-based frame resolver
-      let resolveFrame: ((bitmap: ImageBitmap) => void) | null = null;
-      let rejectFrame: ((e: Error) => void) | null = null;
-
-      const frameResultHandler = async (event: MessageEvent) => {
-        if (event.origin !== 'https://www.figma.com' && event.origin !== 'null' && event.origin !== '') return;
-        const msg = event.data?.pluginMessage ?? event.data;
-        if (!msg) return;
-
-        if (msg.type === 'FRAME_EXPORT_RESULT' && resolveFrame) {
-          const blob = new Blob([msg.bytes], { type: 'image/png' });
-          const bitmap = await createImageBitmap(blob);
-          resolveFrame(bitmap);
-        } else if (msg.type === 'FRAME_EXPORT_ERROR' && rejectFrame) {
-          rejectFrame(new Error(msg.error));
-        }
-      };
-
-      window.addEventListener('message', frameResultHandler);
 
       // Calculate current values per layer at a given frame
       const getLayerValues = (frameIndex: number): Record<string, Record<PropertyType, number>> => {
@@ -136,8 +129,6 @@ const Mp4Exporter: React.FC = () => {
         onProgress: setProgress
       });
 
-      window.removeEventListener('message', frameResultHandler);
-
       // Trigger download
       const blob = new Blob([buffer], { type: 'video/mp4' });
       const url = URL.createObjectURL(blob);
@@ -149,6 +140,7 @@ const Mp4Exporter: React.FC = () => {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      window.removeEventListener('message', frameResultHandler);
       setIsExporting(false);
     }
   };

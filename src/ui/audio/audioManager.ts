@@ -22,6 +22,8 @@ export class AudioManager {
   private gainNode: GainNode | null = null;
   private _volume = 1;
   private _muted = false;
+  private _startCtxTime = 0;   // ctx.currentTime when source.start() was called
+  private _startAudioOffset = 0; // audio file offset (seconds) we started from
 
   async load(file: File): Promise<AudioInfo> {
     this.stop();
@@ -89,6 +91,8 @@ export class AudioManager {
 
     // start(when, offset, duration)
     this.source.start(now, startOffset, playDuration);
+    this._startCtxTime = now;
+    this._startAudioOffset = startOffset;
   }
 
   stop() {
@@ -110,6 +114,15 @@ export class AudioManager {
     if (this.gainNode) {
       this.gainNode.gain.value = muted ? 0 : this._volume;
     }
+  }
+
+  /**
+   * Returns the current playback position in seconds within the audio file.
+   * Returns -1 if audio is not currently playing.
+   */
+  getCurrentTime(): number {
+    if (!this.ctx || !this.source) return -1;
+    return (this.ctx.currentTime - this._startCtxTime) + this._startAudioOffset;
   }
 
   get hasAudio() { return this.buffer !== null; }

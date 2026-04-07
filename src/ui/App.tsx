@@ -235,6 +235,46 @@ const App: React.FC = () => {
     voiceoverFadeOut,
   ]);
 
+  // Drift correction: every 500 ms while playing, check if audio has drifted
+  // more than 250 ms from the animation playhead and resync if so.
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    const SYNC_MS = 500;
+    const DRIFT_S = 0.25;
+
+    const id = setInterval(() => {
+      const state = useAnimationStore.getState();
+      const expectedSecs = state.playhead / state.fps;
+
+      if (audioManager.hasAudio && audioName) {
+        const actual = audioManager.getCurrentTime();
+        if (actual >= 0 && Math.abs(actual - expectedSecs) > DRIFT_S) {
+          audioManager.play(expectedSecs, {
+            trimStart: state.audioTrimStart,
+            trimEnd: state.audioTrimEnd || undefined,
+            fadeIn: 0,
+            fadeOut: state.audioFadeOut,
+          });
+        }
+      }
+
+      if (voiceoverManager.hasAudio && voiceoverName) {
+        const actual = voiceoverManager.getCurrentTime();
+        if (actual >= 0 && Math.abs(actual - expectedSecs) > DRIFT_S) {
+          voiceoverManager.play(expectedSecs, {
+            trimStart: state.voiceoverTrimStart,
+            trimEnd: state.voiceoverTrimEnd || undefined,
+            fadeIn: 0,
+            fadeOut: state.voiceoverFadeOut,
+          });
+        }
+      }
+    }, SYNC_MS);
+
+    return () => clearInterval(id);
+  }, [isPlaying, audioName, voiceoverName]);
+
   // Update wasPlayingRef after both audio effects have run
   useEffect(() => {
     wasPlayingRef.current = isPlaying;

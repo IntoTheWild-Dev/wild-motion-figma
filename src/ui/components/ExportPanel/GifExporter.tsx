@@ -37,30 +37,30 @@ const GifExporter: React.FC = () => {
     setIsExporting(true);
     setProgress(0);
 
+    let resolveFrame: ((bitmap: ImageBitmap) => void) | null = null;
+    let rejectFrame: ((e: Error) => void) | null = null;
+
+    const frameResultHandler = async (event: MessageEvent) => {
+      if (event.origin !== 'https://www.figma.com' && event.origin !== 'null' && event.origin !== '') return;
+      const msg = event.data?.pluginMessage ?? event.data;
+      if (!msg) return;
+
+      if (msg.type === 'FRAME_EXPORT_RESULT' && resolveFrame) {
+        const blob = new Blob([msg.bytes], { type: 'image/png' });
+        const bitmap = await createImageBitmap(blob);
+        resolveFrame(bitmap);
+      } else if (msg.type === 'FRAME_EXPORT_ERROR' && rejectFrame) {
+        rejectFrame(new Error(msg.error));
+      }
+    };
+
+    window.addEventListener('message', frameResultHandler);
+
     try {
       const canvas = canvasRef.current!;
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d')!;
-
-      let resolveFrame: ((bitmap: ImageBitmap) => void) | null = null;
-      let rejectFrame: ((e: Error) => void) | null = null;
-
-      const frameResultHandler = async (event: MessageEvent) => {
-        if (event.origin !== 'https://www.figma.com' && event.origin !== 'null' && event.origin !== '') return;
-        const msg = event.data?.pluginMessage ?? event.data;
-        if (!msg) return;
-
-        if (msg.type === 'FRAME_EXPORT_RESULT' && resolveFrame) {
-          const blob = new Blob([msg.bytes], { type: 'image/png' });
-          const bitmap = await createImageBitmap(blob);
-          resolveFrame(bitmap);
-        } else if (msg.type === 'FRAME_EXPORT_ERROR' && rejectFrame) {
-          rejectFrame(new Error(msg.error));
-        }
-      };
-
-      window.addEventListener('message', frameResultHandler);
 
       const getLayerValues = (frameIndex: number): Record<string, Record<PropertyType, number>> => {
         const result: Record<string, Record<PropertyType, number>> = {};
@@ -121,8 +121,6 @@ const GifExporter: React.FC = () => {
         onProgress: setProgress,
       });
 
-      window.removeEventListener('message', frameResultHandler);
-
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -132,6 +130,7 @@ const GifExporter: React.FC = () => {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      window.removeEventListener('message', frameResultHandler);
       setIsExporting(false);
     }
   };
