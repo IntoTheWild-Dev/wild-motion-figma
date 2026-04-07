@@ -1,0 +1,53 @@
+{
+  "name": "motionforge",
+  "version": "1.0.0",
+  "description": "A Figma plugin for keyframe animation with export to Lottie, GIF, and CSS",
+  "main": "dist/code.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node scripts/inline-html.mjs",
+    "build:watch": "vite build --watch",
+    "lint": "eslint 'src/**/*.{ts,tsx}'",
+    "lint:fix": "eslint 'src/**/*.{ts,tsx}' --fix",
+    "format": "prettier --write src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "manifest:validate": "node scripts/validate-manifest.js"
+  },
+  "keywords": [
+    "figma",
+    "plugin",
+    "animation",
+    "keyframe",
+    "lottie",
+    "gif",
+    "css"
+  ],
+  "author": "IntoTheWild Agency",
+  "license": "MIT",
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.123.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@typescript-eslint/eslint-plugin": "^5.0.0",
+    "@typescript-eslint/parser": "^5.0.0",
+    "@vitejs/plugin-react": "^3.0.0",
+    "autoprefixer": "^10.4.27",
+    "eslint": "^8.0.0",
+    "eslint-plugin-react": "^7.30.0",
+    "postcss": "^8.5.8",
+    "prettier": "^2.0.0",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^4.0.0",
+    "vite": "^4.0.0",
+    "vitest": "^0.20.0",
+    "zustand": "^4.0.0"
+  },
+  "dependencies": {
+    "gif.js": "^0.2.0",
+    "mp4-muxer": "^5.2.2",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  }
+}
