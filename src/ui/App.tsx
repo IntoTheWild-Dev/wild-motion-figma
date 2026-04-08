@@ -389,7 +389,7 @@ const App: React.FC = () => {
       }
       sendFrameToPlugin({ nodeId: layer.nodeId, values: restoreValues });
     }
-  }, [isPlaying]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isPlaying]); // eslint-disable-line
 
   // Cache Figma selection pushed by plugin (via SELECTION_CHANGE → 'selection-changed' event)
   useEffect(() => {
