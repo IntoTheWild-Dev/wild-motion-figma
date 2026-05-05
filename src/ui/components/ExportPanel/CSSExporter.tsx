@@ -4,13 +4,14 @@ import { useAnimationStore } from '@/ui/store/animationStore';
 import { generateCss } from '@/ui/exporters/cssBuilder';
 
 const CSSExporter: React.FC = () => {
-  const { layers, fps } = useAnimationStore((state) => ({
+  const { layers, fps, duration } = useAnimationStore((state) => ({
     layers: state.layers,
-    fps: state.fps
+    fps: state.fps,
+    duration: state.duration,
   }));
 
   const handleExport = () => {
-    const css = generateCss(layers, fps);
+    const css = generateCss(layers, fps, duration + 1);
     const blob = new Blob([css], { type: 'text/css' });
     const url = URL.createObjectURL(blob);
     

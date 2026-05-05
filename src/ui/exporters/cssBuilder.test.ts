@@ -5,7 +5,7 @@ import type { Layer, Keyframe } from '@/types/animation.types';
 
 describe('cssBuilder', () => {
   it('should generate empty CSS for no layers', () => {
-    const css = generateCss([], 30);
+    const css = generateCss([], 30, 90);
     expect(css).toContain('No layers to animate');
   });
 
@@ -33,7 +33,7 @@ describe('cssBuilder', () => {
       }
     ];
 
-    const css = generateCss(layers, 30);
+    const css = generateCss(layers, 30, 90);
 
     // All transform properties are merged into a single combined @keyframes block
     expect(css).toContain('@keyframes wm-layer1-transform');

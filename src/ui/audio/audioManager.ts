@@ -27,6 +27,10 @@ export class AudioManager {
 
   async load(file: File): Promise<AudioInfo> {
     this.stop();
+    // Close previous AudioContext to prevent context limit exhaustion (~6 max in browsers)
+    if (this.ctx && this.ctx.state !== 'closed') {
+      await this.ctx.close();
+    }
     this.ctx = new AudioContext();
     this.gainNode = this.ctx.createGain();
     this.gainNode.connect(this.ctx.destination);

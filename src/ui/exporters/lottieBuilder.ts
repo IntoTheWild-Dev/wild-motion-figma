@@ -1,78 +1,74 @@
 // src/ui/exporters/lottieBuilder.ts
-import type { Layer, PropertyType, Keyframe, EasingPreset } from '@/types/animation.types';
+import type { Layer, Keyframe, EasingPreset } from '@/types/animation.types';
 
 /**
- * Lottie JSON structure types (simplified for MVP)
+ * Lottie JSON v5 structure.
+ * `ks` properties are flat under `ks` (not nested under `a`).
+ * Reference: https://lottiefiles.github.io/lottie-docs/concepts/#animated-property
  */
+interface LottieKeyframedValue {
+  a: 1;
+  k: LottieKeyframe[];
+}
+
+interface LottieStaticValue {
+  a: 0;
+  k: number | number[];
+}
+
+type LottieValue = LottieKeyframedValue | LottieStaticValue;
+
+interface LottieKeyframe {
+  t: number;            // frame time
+  s: number[];          // start value
+  e?: number[];         // end value (omit on last keyframe)
+  i?: { x: number; y: number }; // easing in
+  o?: { x: number; y: number }; // easing out
+  h?: 1;               // hold frame (1 = hold, no interpolation)
+}
+
+interface LottieTransform {
+  p: LottieValue;   // position [x, y, 0]
+  s: LottieValue;   // scale    [sx, sy, 100] (percent)
+  r: LottieValue;   // rotation (degrees)
+  o: LottieValue;   // opacity  (0-100)
+  a: LottieValue;   // anchor point [x, y, 0]
+}
+
+interface LottieLayer {
+  nm: string;       // name
+  ty: 3;            // type 3 = null layer (universal, no visual props required)
+  ip: number;       // in point
+  op: number;       // out point (exclusive — one past last frame)
+  st: number;       // start time
+  sr: number;       // stretch ratio
+  ind: number;      // layer index
+  ks: LottieTransform;
+}
+
 interface LottieJSON {
-  v: string; // version
-  fr: number; // frame rate
-  ip: number; // in point (start frame)
-  op: number; // out point (end frame)
-  w: number; // width
-  h: number; // height
-  nm: string; // name
-  layers: ILayer[];
+  v: string;
+  fr: number;
+  ip: number;
+  op: number;
+  w: number;
+  h: number;
+  nm: string;
+  ddd: 0;
+  layers: LottieLayer[];
 }
 
-interface ILayer {
-  nm: string; // layer name
-  ty: number; // type (4 for shape layer, 1 for solid, etc.)
-  ip: number; // in point
-  op: number; // out point
-  st: number; // start time
-  sr: number; // stretch
-  ks: IKS; // transform properties
-}
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-interface IKS {
-  a: {
-    p: IKF; // position
-    s: IKF; // scale
-    r: IKF; // rotation
-    o: IKF; // opacity
-  };
-}
-
-interface IKF {
-  a: number; // 1 if animated, 0 if not
-  k: IK; // keyframes
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type IK = any;
-
-interface LottieBezier {
-  i: { x: number; y: number };
-  o: { x: number; y: number };
-}
-
-/**
- * Convert an EasingPreset to Lottie keyframe bezier handles.
- *
- * Lottie convention:
- *   o = outgoing tangent from start value  → CSS cubic-bezier p1 (x1, y1)
- *   i = incoming tangent into end value    → CSS cubic-bezier p2 (x2, y2)
- *
- * For cubic-bezier(p1x, p1y, p2x, p2y):
- *   o = { x: p1x, y: p1y }
- *   i = { x: p2x, y: p2y }
- */
-const easingToLottieBezier = (easing: EasingPreset | undefined): LottieBezier => {
+const easingToLottieBezier = (easing: EasingPreset | undefined): { i: { x: number; y: number }; o: { x: number; y: number } } => {
   if (!easing || easing.type === 'linear') {
     return { o: { x: 0, y: 0 }, i: { x: 1, y: 1 } };
   }
-  const [p1x, p1y, p2x, p2y] = easing.points ?? [0.25, 0.1, 0.25, 1];
-  return {
-    o: { x: p1x, y: p1y },
-    i: { x: p2x, y: p2y },
-  };
+  const [p1x, p1y, p2x, p2y] = easing.points ?? [0.25, 0.1, 0.25, 1.0];
+  return { o: { x: p1x, y: p1y }, i: { x: p2x, y: p2y } };
 };
 
-/**
- * Linear interpolation between keyframes at an arbitrary frame.
- * Returns the default value when the track is empty.
- */
+/** Linear interpolation between sorted keyframes at a given frame. */
 const interpolateTrack = (track: Keyframe[], frame: number, defaultVal = 0): number => {
   if (track.length === 0) return defaultVal;
   const sorted = [...track].sort((a, b) => a.frame - b.frame);
@@ -85,173 +81,168 @@ const interpolateTrack = (track: Keyframe[], frame: number, defaultVal = 0): num
 };
 
 /**
- * Generate Lottie JSON from our layers and keyframes
+ * Build a Lottie animated property from a list of keyframe entries.
+ * Returns a static value when there is only one keyframe.
  */
-export const generateLottie = (layers: Layer[], fps: number, width = 800, height = 600): LottieJSON => {
-  if (layers.length === 0) {
-    return {
-      v: '5.7.4',
-      fr: fps,
-      ip: 0,
-      op: 0,
-      w: width,
-      h: height,
-      nm: 'Wild Motion Export',
-      layers: []
-    };
+const buildAnimatedScalar = (
+  keyframes: Keyframe[],
+  toValue: (v: number) => number,
+  staticDefault: number
+): LottieValue => {
+  if (keyframes.length === 0) {
+    return { a: 0, k: staticDefault };
   }
-
-  // Find the maximum frame across all layers and properties
-  let maxFrame = 0;
-  for (const layer of layers) {
-    for (const propertyTracks of Object.values(layer.propertyTracks)) {
-      for (const kf of propertyTracks) {
-        if (kf.frame > maxFrame) maxFrame = kf.frame;
-      }
+  const sorted = [...keyframes].sort((a, b) => a.frame - b.frame);
+  if (sorted.length === 1) {
+    return { a: 0, k: toValue(sorted[0].value) };
+  }
+  const kfs: LottieKeyframe[] = sorted.map((kf, i) => {
+    const entry: LottieKeyframe = { t: kf.frame, s: [toValue(kf.value)] };
+    if (i < sorted.length - 1) {
+      entry.e = [toValue(sorted[i + 1].value)];
+      const bez = easingToLottieBezier(kf.easing);
+      entry.i = bez.i;
+      entry.o = bez.o;
     }
+    return entry;
+  });
+  return { a: 1, k: kfs };
+};
+
+/**
+ * Build a Lottie animated 2D vector property (position or scale).
+ * Merges two separate x/y tracks into [x, y, 0] keyframe arrays.
+ */
+const buildAnimatedVector2 = (
+  xKfs: Keyframe[],
+  yKfs: Keyframe[],
+  toX: (v: number) => number,
+  toY: (v: number) => number,
+  defaultX: number,
+  defaultY: number
+): LottieValue => {
+  if (xKfs.length === 0 && yKfs.length === 0) {
+    return { a: 0, k: [defaultX, defaultY, 0] };
   }
 
-  const lottieLayers: ILayer[] = [];
+  const allFrames = Array.from(
+    new Set([...xKfs.map(kf => kf.frame), ...yKfs.map(kf => kf.frame)])
+  ).sort((a, b) => a - b);
 
-  for (const layer of layers) {
-    const hasAnimation = Object.values(layer.propertyTracks).some(tracks => tracks.length > 0);
+  if (allFrames.length === 1) {
+    const x = xKfs.length > 0 ? toX(xKfs[0].value) : defaultX;
+    const y = yKfs.length > 0 ? toY(yKfs[0].value) : defaultY;
+    return { a: 0, k: [x, y, 0] };
+  }
 
-    const lottieLayer: ILayer = {
-      nm: layer.name,
-      ty: hasAnimation ? 4 : 1,
-      ip: 0,
-      op: maxFrame,
-      st: 0,
-      sr: 1,
-      ks: {
-        a: {
-          p: { a: 0, k: {} },
-          s: { a: 0, k: {} },
-          r: { a: 0, k: {} },
-          o: { a: 0, k: {} }
-        }
-      }
-    };
+  const kfs: LottieKeyframe[] = allFrames.map((frame, i) => {
+    const x = toX(interpolateTrack(xKfs, frame, defaultX));
+    const y = toY(interpolateTrack(yKfs, frame, defaultY));
+    const entry: LottieKeyframe = { t: frame, s: [x, y, 0] };
+    if (i < allFrames.length - 1) {
+      entry.e = [
+        toX(interpolateTrack(xKfs, allFrames[i + 1], defaultX)),
+        toY(interpolateTrack(yKfs, allFrames[i + 1], defaultY)),
+        0,
+      ];
+      const xKf = xKfs.find(kf => kf.frame === frame);
+      const yKf = yKfs.find(kf => kf.frame === frame);
+      const bez = easingToLottieBezier(xKf?.easing ?? yKf?.easing);
+      entry.i = bez.i;
+      entry.o = bez.o;
+    }
+    return entry;
+  });
 
-    // --- Position (merged x/y into [x, y, z]) ---
+  return { a: 1, k: kfs };
+};
+
+// ── Main export ───────────────────────────────────────────────────────────────
+
+/**
+ * Generate spec-compliant Lottie JSON (v5.7.4) from animation layers.
+ * Uses null layers (ty:3) which are universal and require no extra fields.
+ * Width/height are used for the composition size only.
+ */
+export const generateLottie = (
+  layers: Layer[],
+  fps: number,
+  totalFrames: number,
+  width = 800,
+  height = 600
+): LottieJSON => {
+  const op = Math.max(1, totalFrames); // out-point is exclusive (one past last frame)
+
+  if (layers.length === 0) {
+    return { v: '5.7.4', fr: fps, ip: 0, op, w: width, h: height, nm: 'Wild Motion Export', ddd: 0, layers: [] };
+  }
+
+  const lottieLayers: LottieLayer[] = layers.map((layer, idx) => {
+    const base = layer.baseValues ?? {};
+    const baseX = (base as any).x ?? 0;
+    const baseY = (base as any).y ?? 0;
+    const baseRotation = (base as any).rotation ?? 0;
+    const baseOpacity = ((base as any).opacity ?? 1) * 100; // Figma 0-1 → Lottie 0-100
+
+    // Position: keyframe values are deltas from base, so add base back for absolute coords
     const posXKfs = layer.propertyTracks['x'] || [];
     const posYKfs = layer.propertyTracks['y'] || [];
+    const position = buildAnimatedVector2(
+      posXKfs, posYKfs,
+      v => baseX + v,   // delta → absolute
+      v => baseY + v,
+      baseX, baseY
+    );
 
-    if (posXKfs.length > 0 || posYKfs.length > 0) {
-      const allFrames = Array.from(
-        new Set([...posXKfs.map(kf => kf.frame), ...posYKfs.map(kf => kf.frame)])
-      ).sort((a, b) => a - b);
-
-      const mergedKeyframes = allFrames.map((frame, i) => {
-        const x = interpolateTrack(posXKfs, frame);
-        const y = interpolateTrack(posYKfs, frame);
-        const entry: Record<string, unknown> = { t: frame, s: [x, y, 0] };
-
-        if (i < allFrames.length - 1) {
-          entry.e = [
-            interpolateTrack(posXKfs, allFrames[i + 1]),
-            interpolateTrack(posYKfs, allFrames[i + 1]),
-            0,
-          ];
-          // Easing: prefer x keyframe at this frame, fall back to y
-          const xKf = posXKfs.find(kf => kf.frame === frame);
-          const yKf = posYKfs.find(kf => kf.frame === frame);
-          const bezier = easingToLottieBezier(xKf?.easing ?? yKf?.easing);
-          entry.i = bezier.i;
-          entry.o = bezier.o;
-        }
-
-        return entry;
-      });
-
-      lottieLayer.ks.a.p = {
-        a: mergedKeyframes.length > 1 ? 1 : 0,
-        k: mergedKeyframes.length === 1 ? mergedKeyframes[0].s : mergedKeyframes
-      };
-    }
-
-    // --- Scale (merged scaleX/scaleY into [sx, sy, 1], 0-100 range) ---
+    // Scale: store values are multipliers (1.0 = 100%), Lottie expects percent
     const scaleXKfs = layer.propertyTracks['scaleX'] || [];
     const scaleYKfs = layer.propertyTracks['scaleY'] || [];
+    const scale = buildAnimatedVector2(
+      scaleXKfs, scaleYKfs,
+      v => v * 100,
+      v => v * 100,
+      100, 100
+    );
 
-    if (scaleXKfs.length > 0 || scaleYKfs.length > 0) {
-      const allFrames = Array.from(
-        new Set([...scaleXKfs.map(kf => kf.frame), ...scaleYKfs.map(kf => kf.frame)])
-      ).sort((a, b) => a - b);
+    // Rotation: keyframe values are deltas from base
+    const rotKfs = layer.propertyTracks['rotation'] || [];
+    const rotation = buildAnimatedScalar(
+      rotKfs,
+      v => baseRotation + v,
+      baseRotation
+    );
 
-      const scaleMerged = allFrames.map((frame, i) => {
-        const sx = interpolateTrack(scaleXKfs, frame, 1) * 100;
-        const sy = interpolateTrack(scaleYKfs, frame, 1) * 100;
-        const entry: Record<string, unknown> = { t: frame, s: [sx, sy, 1] };
+    // Opacity: store 0-100, Lottie 0-100 — no conversion needed
+    const opKfs = layer.propertyTracks['opacity'] || [];
+    const opacity = buildAnimatedScalar(opKfs, v => v, baseOpacity);
 
-        if (i < allFrames.length - 1) {
-          entry.e = [
-            interpolateTrack(scaleXKfs, allFrames[i + 1], 1) * 100,
-            interpolateTrack(scaleYKfs, allFrames[i + 1], 1) * 100,
-            1,
-          ];
-          const xKf = scaleXKfs.find(kf => kf.frame === frame);
-          const yKf = scaleYKfs.find(kf => kf.frame === frame);
-          const bezier = easingToLottieBezier(xKf?.easing ?? yKf?.easing);
-          entry.i = bezier.i;
-          entry.o = bezier.o;
-        }
-
-        return entry;
-      });
-
-      lottieLayer.ks.a.s = {
-        a: scaleMerged.length > 1 ? 1 : 0,
-        k: scaleMerged.length === 1 ? scaleMerged[0].s : scaleMerged
-      };
-    }
-
-    // --- Rotation and Opacity ---
-    const scalarProps: Array<{
-      prop: PropertyType;
-      lottieProp: keyof IKS['a'];
-      toValue: (v: number) => number;
-    }> = [
-      { prop: 'rotation', lottieProp: 'r', toValue: v => v },
-      { prop: 'opacity',  lottieProp: 'o', toValue: v => v }, // store 0-100 = Lottie 0-100
-    ];
-
-    for (const { prop, lottieProp, toValue } of scalarProps) {
-      const keyframes = layer.propertyTracks[prop] || [];
-      if (keyframes.length > 0) {
-        const sorted = [...keyframes].sort((a, b) => a.frame - b.frame);
-        lottieLayer.ks.a[lottieProp] = {
-          a: sorted.length > 1 ? 1 : 0,
-          k: sorted.length === 1
-            ? toValue(sorted[0].value)
-            : sorted.map((kf, i) => {
-              const entry: Record<string, unknown> = {
-                t: kf.frame,
-                s: [toValue(kf.value)],
-              };
-              if (i < sorted.length - 1) {
-                entry.e = [toValue(sorted[i + 1].value)];
-                const bezier = easingToLottieBezier(kf.easing);
-                entry.i = bezier.i;
-                entry.o = bezier.o;
-              }
-              return entry;
-            })
-        };
-      }
-    }
-
-    lottieLayers.push(lottieLayer);
-  }
+    return {
+      nm: layer.name || `Layer ${idx + 1}`,
+      ty: 3,          // null layer — works for any node type
+      ip: 0,
+      op,
+      st: 0,
+      sr: 1,
+      ind: idx + 1,
+      ks: {
+        p: position,
+        s: scale,
+        r: rotation,
+        o: opacity,
+        a: { a: 0, k: [0, 0, 0] }, // anchor point (static)
+      },
+    };
+  });
 
   return {
     v: '5.7.4',
     fr: fps,
     ip: 0,
-    op: maxFrame,
+    op,
     w: width,
     h: height,
     nm: 'Wild Motion Export',
-    layers: lottieLayers
+    ddd: 0,
+    layers: lottieLayers,
   };
 };

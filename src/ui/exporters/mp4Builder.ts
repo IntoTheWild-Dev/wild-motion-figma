@@ -79,28 +79,38 @@ export const generateMp4 = async (opts: Mp4ExportOptions): Promise<ArrayBuffer> 
   // We import the store helper via a passed-in closure (getFrame) to keep this pure
 
   // Encode each frame
+  let prevBitmap: ImageBitmap | null = null;
   for (let i = 0; i < totalFrames; i++) {
     if (encoderError) throw encoderError;
 
-    // Build layer values at this frame (caller provides them via getFrame)
     const bitmap = await getFrame(i);
-    if (!bitmap) continue;
+
+    // Use previous frame if current failed to avoid gap in H.264 stream
+    const frameBitmap = bitmap ?? prevBitmap;
+    if (!frameBitmap) { onProgress?.((i + 1) / totalFrames); continue; }
+
+    if (bitmap) prevBitmap = bitmap;
 
     const timestamp = Math.round(i * microsecondsPerFrame);
-    const frame = new VideoFrame(bitmap, { timestamp });
+    const frame = new VideoFrame(frameBitmap, { timestamp });
 
     // Every ~30 frames force a keyframe
     encoder.encode(frame, { keyFrame: i % 30 === 0 });
 
     frame.close();
-    bitmap.close();
+    if (bitmap) bitmap.close();
 
     onProgress?.((i + 1) / totalFrames);
   }
 
   if (encoderError) throw encoderError;
+  if (prevBitmap) prevBitmap.close();
 
-  await encoder.flush();
+  try {
+    await encoder.flush();
+  } finally {
+    encoder.close();
+  }
   muxer.finalize();
 
   return target.buffer;

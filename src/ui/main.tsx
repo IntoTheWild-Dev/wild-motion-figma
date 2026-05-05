@@ -58,15 +58,9 @@ window.addEventListener('beforeunload', () => {
 });
 
 // Function to send frame updates to plugin for preview
-export const sendFrameToPlugin = (frameData: { nodeId: string; values: Record<string, any> }) => {
-  console.log('[WM-UI] Sending APPLY_FRAME', frameData.nodeId, JSON.stringify(frameData.values));
+export const sendFrameToPlugin = (frameData: { nodeId: string; values: Record<string, unknown> }) => {
   window.parent.postMessage(
-    {
-      pluginMessage: {
-        type: 'APPLY_FRAME',
-        payload: frameData,
-      },
-    },
+    { pluginMessage: { type: 'APPLY_FRAME', payload: frameData } },
     '*'
   );
 };

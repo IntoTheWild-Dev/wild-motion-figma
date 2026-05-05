@@ -53,17 +53,20 @@ const interpolateAtFrame = (keyframes: Keyframe[], frame: number, defaultVal: nu
  */
 export const generatePropertyKeyframes = (
   property: PropertyType,
-  keyframes: Keyframe[]
+  keyframes: Keyframe[],
+  totalFrames: number
 ): string => {
   if (keyframes.length === 0) return '';
 
   const sortedKeyframes = [...keyframes].sort((a, b) => a.frame - b.frame);
   const lastFrame = sortedKeyframes[sortedKeyframes.length - 1].frame;
   if (lastFrame === 0) return '';
+  // Use totalFrames so percentages reflect the full project duration
+  const durationFrames = totalFrames > 0 ? totalFrames : lastFrame;
 
   let css = '';
   sortedKeyframes.forEach((kf, index) => {
-    const percent = Math.round((kf.frame / lastFrame) * 10000) / 100;
+    const percent = Math.round((kf.frame / durationFrames) * 10000) / 100;
     const easing: EasingPreset = kf.easing ?? { type: 'linear' };
     const timingFunction = easingToCssTimingFunction(easing);
 
@@ -111,7 +114,7 @@ export const getPropertyUnit = (property: PropertyType): string => {
  *
  * Opacity is kept as a separate animation because it is not a CSS transform.
  */
-export const generateLayerCss = (layer: Layer, fps: number): string => {
+export const generateLayerCss = (layer: Layer, fps: number, totalFrames: number): string => {
   const allFrames = Object.values(layer.propertyTracks)
     .filter(tracks => tracks.length > 0)
     .flatMap(tracks => tracks.map(kf => kf.frame));
@@ -121,7 +124,8 @@ export const generateLayerCss = (layer: Layer, fps: number): string => {
   const maxFrame = Math.max(...allFrames);
   if (maxFrame === 0) return '';
 
-  const durationSeconds = maxFrame / fps;
+  // Use totalFrames for duration so animation fills the whole project, not just last keyframe
+  const durationSeconds = totalFrames / fps;
   const layerId = layer.id.replace(/[^a-zA-Z0-9]/g, '');
 
   let css = '';
@@ -142,7 +146,8 @@ export const generateLayerCss = (layer: Layer, fps: number): string => {
     css += `@keyframes ${transformAnimName} {\n`;
     for (let i = 0; i < transformFrames.length; i++) {
       const frame = transformFrames[i];
-      const percent = Math.round((frame / maxFrame) * 10000) / 100;
+      // Use totalFrames for percent so keyframes map correctly across full duration
+      const percent = Math.round((frame / totalFrames) * 10000) / 100;
 
       const x  = interpolateAtFrame(layer.propertyTracks['x']       || [], frame, TRANSFORM_DEFAULTS.x);
       const y  = interpolateAtFrame(layer.propertyTracks['y']       || [], frame, TRANSFORM_DEFAULTS.y);
@@ -178,7 +183,7 @@ export const generateLayerCss = (layer: Layer, fps: number): string => {
   if (opacityKfs.length > 0) {
     const opacityAnimName = `wm-${layerId}-opacity`;
     css += `@keyframes ${opacityAnimName} {\n`;
-    css += generatePropertyKeyframes('opacity', opacityKfs);
+    css += generatePropertyKeyframes('opacity', opacityKfs, totalFrames);
     css += '}\n\n';
     animationParts.push(`${opacityAnimName} ${durationSeconds}s forwards`);
   }
@@ -196,11 +201,11 @@ export const generateLayerCss = (layer: Layer, fps: number): string => {
 /**
  * Generate CSS for all layers
  */
-export const generateCss = (layers: Layer[], fps: number): string => {
+export const generateCss = (layers: Layer[], fps: number, totalFrames: number): string => {
   if (layers.length === 0) return '/* No layers to animate */';
 
   return `
 /* Wild Motion CSS Animation Export */
-${layers.map(layer => generateLayerCss(layer, fps)).join('\n')}
+${layers.map(layer => generateLayerCss(layer, fps, totalFrames)).join('\n')}
 `;
 };

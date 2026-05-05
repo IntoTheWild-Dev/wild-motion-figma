@@ -4,13 +4,14 @@ import { useAnimationStore } from '@/ui/store/animationStore';
 import { generateLottie } from '@/ui/exporters/lottieBuilder';
 
 const LottieExporter: React.FC = () => {
-  const { layers, fps } = useAnimationStore((state) => ({
+  const { layers, fps, duration } = useAnimationStore((state) => ({
     layers: state.layers,
-    fps: state.fps
+    fps: state.fps,
+    duration: state.duration,
   }));
 
   const handleExport = () => {
-    const lottie = generateLottie(layers, fps);
+    const lottie = generateLottie(layers, fps, duration + 1);
     const blob = new Blob([JSON.stringify(lottie, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     

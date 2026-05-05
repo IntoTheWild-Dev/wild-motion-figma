@@ -300,6 +300,22 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
       const layerIndex = state.layers.findIndex(layer => layer.id === layerId);
       if (layerIndex === -1) return state;
 
+      const oldLayer = state.layers[layerIndex];
+      const existingTrack = oldLayer.propertyTracks[property] || [];
+
+      // If a keyframe already exists at this frame, update its value instead of adding a duplicate
+      const existing = existingTrack.find(kf => kf.frame === frame);
+      if (existing) {
+        const newTrack = existingTrack.map(kf => kf.frame === frame ? { ...kf, value } : kf);
+        const updatedLayers = [...state.layers];
+        updatedLayers[layerIndex] = {
+          ...oldLayer,
+          propertyTracks: { ...oldLayer.propertyTracks, [property]: newTrack },
+        };
+        const newHistory = [...state.history, state.layers].slice(-50);
+        return { layers: updatedLayers, history: newHistory, redoStack: [] };
+      }
+
       const newKeyframe: Keyframe = {
         id: generateId(),
         frame,
@@ -307,10 +323,7 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
         easing: { type: 'linear' },
       };
 
-      const oldLayer = state.layers[layerIndex];
-      const existingTrack = oldLayer.propertyTracks[property] || [];
       const newTrack = [...existingTrack, newKeyframe].sort((a, b) => a.frame - b.frame);
-
       const updatedLayers = [...state.layers];
       updatedLayers[layerIndex] = {
         ...oldLayer,

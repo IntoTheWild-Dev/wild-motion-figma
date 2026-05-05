@@ -319,17 +319,16 @@ const ExportPanel: React.FC = () => {
         if (bitmap0) {
           const { width, height } = bitmap0;
           bitmap0.close();
-          const json = generateLottie(layers, fps, width, height);
+          const json = generateLottie(layers, fps, duration + 1, width, height);
           const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
           downloadBlob(blob, 'animation.json');
         } else {
-          // Fallback to defaults if Figma doesn't respond
-          const json = generateLottie(layers, fps);
+          const json = generateLottie(layers, fps, duration + 1);
           const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
           downloadBlob(blob, 'animation.json');
         }
       } catch {
-        const json = generateLottie(layers, fps);
+        const json = generateLottie(layers, fps, duration + 1);
         const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
         downloadBlob(blob, 'animation.json');
       } finally {
@@ -337,7 +336,7 @@ const ExportPanel: React.FC = () => {
         setExportProgress(0);
       }
     } else if (format === 'css') {
-      const css = generateCss(layers, fps);
+      const css = generateCss(layers, fps, duration + 1);
       const blob = new Blob([css], { type: 'text/css' });
       downloadBlob(blob, 'animation.css');
     } else if (format === 'mp4') {
