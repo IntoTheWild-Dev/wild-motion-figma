@@ -176,7 +176,20 @@ export const generateWebm = async (opts: {
     recorder.start();
 
     let idx = 0;
-    const drawNext = () => {
+    let startTime: number | null = null;
+
+    const drawNext = (timestamp: number) => {
+      if (startTime === null) startTime = timestamp;
+      const elapsed = timestamp - startTime;
+      const expectedTime = idx * frameDelay;
+
+      // Only draw when we've reached the expected frame time
+      if (elapsed < expectedTime - 2) {
+        // Not yet time for this frame — schedule check closer to target
+        requestAnimationFrame(drawNext);
+        return;
+      }
+
       if (idx >= frameBitmaps.length) {
         // Wait one extra frame before stopping so the last frame is captured
         setTimeout(() => recorder.stop(), frameDelay);
@@ -198,9 +211,9 @@ export const generateWebm = async (opts: {
 
       idx++;
       onProgress?.(0.8 + (idx / frameBitmaps.length) * 0.2);
-      setTimeout(drawNext, frameDelay);
+      requestAnimationFrame(drawNext);
     };
 
-    drawNext();
+    requestAnimationFrame(drawNext);
   });
 };

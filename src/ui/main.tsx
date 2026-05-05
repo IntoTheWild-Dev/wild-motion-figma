@@ -34,11 +34,10 @@ const pluginToUiMessageHandler = (event: MessageEvent) => {
       })
     );
   } else if (msg.type === 'APPLY_SUCCESS') {
+    // Legacy handler — kept for backwards compatibility
     window.dispatchEvent(new CustomEvent('apply-success', { detail: msg }));
   } else if (msg.type === 'APPLY_ERROR') {
     window.dispatchEvent(new CustomEvent('apply-error', { detail: msg }));
-  } else if (msg.type === 'PLUGIN_RECEIVED') {
-    window.dispatchEvent(new CustomEvent('plugin-received', { detail: msg }));
   } else if (msg.type === 'RESTORE_STATE') {
     window.dispatchEvent(new CustomEvent('restore-state', { detail: msg.data }));
   }

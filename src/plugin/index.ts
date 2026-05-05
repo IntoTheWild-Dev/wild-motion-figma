@@ -10,6 +10,7 @@ figma.showUI(__html__, { width: 1200, height: 680 });
 // Define message types for plugin <-> UI communication
 type UIToPluginMessageType =
   | 'APPLY_FRAME'
+  | 'APPLY_ALL_FRAMES'
   | 'READ_SELECTION'
   | 'EXPORT_REQUEST'
   | 'EXPORT_FRAME_REQUEST'
@@ -34,6 +35,26 @@ interface UIToPluginMessage {
 // Seeded from _baseWidth/_baseHeight sent by the UI on every scale frame — this is
 // the single source of truth and avoids the fragile __baseWidth node-property hack.
 const nodeSizeCache = new Map<string, { w: number; h: number }>();
+
+// Shared helper to apply transform values to a node
+const applyValuesToNode = (nodeId: string, node: SceneNode, values: Record<string, unknown>) => {
+  const fnode = node as SceneNode & { x: number; y: number; rotation: number; opacity: number };
+  if (typeof values.x === 'number') fnode.x = values.x;
+  if (typeof values.y === 'number') fnode.y = values.y;
+  if (typeof values.rotation === 'number') fnode.rotation = values.rotation;
+  if (typeof values.opacity === 'number') fnode.opacity = values.opacity / 100;
+  if (typeof values.scaleX === 'number' || typeof values.scaleY === 'number') {
+    if (typeof values._baseWidth === 'number' && typeof values._baseHeight === 'number') {
+      nodeSizeCache.set(nodeId, { w: values._baseWidth, h: values._baseHeight });
+    } else if (!nodeSizeCache.has(nodeId)) {
+      nodeSizeCache.set(nodeId, { w: (fnode as any).width, h: (fnode as any).height });
+    }
+    const { w: baseW, h: baseH } = nodeSizeCache.get(nodeId)!;
+    const sx = typeof values.scaleX === 'number' ? values.scaleX : 1;
+    const sy = typeof values.scaleY === 'number' ? values.scaleY : 1;
+    (fnode as any).resize(baseW * sx, baseH * sy);
+  }
+};
 
 // Handle messages from UI
 // Figma wraps messages sent via window.parent.postMessage({ pluginMessage: ... })
@@ -121,46 +142,22 @@ figma.ui.onmessage = async (msg: UIToPluginMessage) => {
   case 'APPLY_FRAME': {
     const { nodeId, values } = msg.payload as { nodeId: string; values: Record<string, unknown> };
     const node = await figma.getNodeByIdAsync(nodeId);
-
     if (!node) {
       figma.notify(`⚠️ Node not found: ${nodeId}`, { error: true });
       figma.ui.postMessage({ type: 'APPLY_ERROR', error: 'Node not found', nodeId });
       break;
     }
+    applyValuesToNode(nodeId, node, values);
+    break;
+  }
 
-    const applied: string[] = [];
-    const fnode = node as SceneNode & { x: number; y: number; rotation: number; opacity: number };
-
-    if (typeof values.x === 'number') {
-      fnode.x = values.x;
-      applied.push(`x=${values.x.toFixed(1)}`);
-    }
-    if (typeof values.y === 'number') {
-      fnode.y = values.y;
-      applied.push(`y=${values.y.toFixed(1)}`);
-    }
-    if (typeof values.rotation === 'number') {
-      fnode.rotation = values.rotation;
-      applied.push(`rot=${values.rotation.toFixed(1)}`);
-    }
-    if (typeof values.opacity === 'number') {
-      fnode.opacity = values.opacity / 100;
-      applied.push(`op=${(values.opacity / 100).toFixed(2)}`);
-    }
-    if (typeof values.scaleX === 'number' || typeof values.scaleY === 'number') {
-      // Seed cache from _baseWidth/_baseHeight sent by the UI (set at import time).
-      // Falls back to current node size only on the very first frame if UI didn't send them.
-      if (typeof values._baseWidth === 'number' && typeof values._baseHeight === 'number') {
-        nodeSizeCache.set(nodeId, { w: values._baseWidth, h: values._baseHeight });
-      } else if (!nodeSizeCache.has(nodeId)) {
-        nodeSizeCache.set(nodeId, { w: fnode.width, h: fnode.height });
-      }
-      const { w: baseW, h: baseH } = nodeSizeCache.get(nodeId)!;
-      const sx = typeof values.scaleX === 'number' ? values.scaleX : 1;
-      const sy = typeof values.scaleY === 'number' ? values.scaleY : 1;
-      (fnode as any).resize(baseW * sx, baseH * sy);
-      if (sx !== 1) applied.push(`sx=${sx.toFixed(2)}`);
-      if (sy !== 1) applied.push(`sy=${sy.toFixed(2)}`);
+  case 'APPLY_ALL_FRAMES': {
+    const { allLayerValues } = msg.payload as { allLayerValues: Record<string, Record<string, unknown>> };
+    if (!allLayerValues) break;
+    for (const [nodeId, values] of Object.entries(allLayerValues)) {
+      const node = await figma.getNodeByIdAsync(nodeId);
+      if (!node) continue;
+      applyValuesToNode(nodeId, node, values);
     }
     break;
   }

@@ -341,19 +341,18 @@ const App: React.FC = () => {
     playhead,
   ]);
 
-  // Send all layer values to Figma on every playhead tick
+  // Send all layer values to Figma on every playhead tick (batched into single message)
   const sendAllLayersToPlugin = useCallback(() => {
     const currentValues = getCurrentValues();
     const entries = Object.entries(currentValues);
-    if (entries.length > 0) {
-      console.log(
-        '[WM] sendAllLayersToPlugin frame=' + useAnimationStore.getState().playhead,
-        currentValues
-      );
-    }
-    for (const [nodeId, values] of entries) {
-      sendFrameToPlugin({ nodeId, values: values as Record<string, number> });
-    }
+    if (entries.length === 0) return;
+    // Send all layers in a single batched message instead of N separate messages
+    window.parent.postMessage({
+      pluginMessage: {
+        type: 'APPLY_ALL_FRAMES',
+        payload: { allLayerValues: currentValues },
+      },
+    }, '*');
   }, [getCurrentValues]);
 
   useEffect(() => {
