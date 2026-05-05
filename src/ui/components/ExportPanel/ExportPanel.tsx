@@ -307,12 +307,35 @@ const ExportPanel: React.FC = () => {
     }
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (layers.length === 0) return;
     if (format === 'lottie') {
-      const json = generateLottie(layers, fps);
-      const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
-      downloadBlob(blob, 'animation.json');
+      // Get actual dimensions from Figma for accurate Lottie export
+      setIsExporting(true);
+      setExportProgress(5);
+      try {
+        const allFrameValues = precomputeAllFrameValues();
+        const bitmap0 = await requestFrameBitmap(0, allFrameValues[0]!);
+        if (bitmap0) {
+          const { width, height } = bitmap0;
+          bitmap0.close();
+          const json = generateLottie(layers, fps, width, height);
+          const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+          downloadBlob(blob, 'animation.json');
+        } else {
+          // Fallback to defaults if Figma doesn't respond
+          const json = generateLottie(layers, fps);
+          const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+          downloadBlob(blob, 'animation.json');
+        }
+      } catch {
+        const json = generateLottie(layers, fps);
+        const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+        downloadBlob(blob, 'animation.json');
+      } finally {
+        setIsExporting(false);
+        setExportProgress(0);
+      }
     } else if (format === 'css') {
       const css = generateCss(layers, fps);
       const blob = new Blob([css], { type: 'text/css' });

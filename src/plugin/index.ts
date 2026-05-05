@@ -122,14 +122,6 @@ figma.ui.onmessage = async (msg: UIToPluginMessage) => {
     const { nodeId, values } = msg.payload as { nodeId: string; values: Record<string, unknown> };
     const node = await figma.getNodeByIdAsync(nodeId);
 
-    // Debug: echo back that we received the message
-    figma.ui.postMessage({
-      type: 'PLUGIN_RECEIVED',
-      nodeId,
-      hasNode: !!node,
-      keys: Object.keys(values || {}),
-    });
-
     if (!node) {
       figma.notify(`⚠️ Node not found: ${nodeId}`, { error: true });
       figma.ui.postMessage({ type: 'APPLY_ERROR', error: 'Node not found', nodeId });
@@ -137,7 +129,7 @@ figma.ui.onmessage = async (msg: UIToPluginMessage) => {
     }
 
     const applied: string[] = [];
-    const fnode = node as FrameNode;
+    const fnode = node as SceneNode & { x: number; y: number; rotation: number; opacity: number };
 
     if (typeof values.x === 'number') {
       fnode.x = values.x;
@@ -166,16 +158,10 @@ figma.ui.onmessage = async (msg: UIToPluginMessage) => {
       const { w: baseW, h: baseH } = nodeSizeCache.get(nodeId)!;
       const sx = typeof values.scaleX === 'number' ? values.scaleX : 1;
       const sy = typeof values.scaleY === 'number' ? values.scaleY : 1;
-      fnode.resize(baseW * sx, baseH * sy);
+      (fnode as any).resize(baseW * sx, baseH * sy);
       if (sx !== 1) applied.push(`sx=${sx.toFixed(2)}`);
       if (sy !== 1) applied.push(`sy=${sy.toFixed(2)}`);
     }
-
-    figma.ui.postMessage({
-      type: 'APPLY_SUCCESS',
-      nodeId,
-      applied: applied.join(' '),
-    });
     break;
   }
 
@@ -189,10 +175,27 @@ figma.ui.onmessage = async (msg: UIToPluginMessage) => {
     } = payload as typeof msg.payload & { width?: number };
     if (!allLayerValues) break;
 
+    // Save original node state before applying transforms
+    const originalStates = new Map<string, { x: number; y: number; rotation: number; opacity: number; width: number; height: number }>();
+
     // Apply all layer transforms
     for (const [nodeId, values] of Object.entries(allLayerValues)) {
       const n = await figma.getNodeByIdAsync(nodeId);
       if (!n) continue;
+
+      // Save original state
+      if (!originalStates.has(nodeId)) {
+        originalStates.set(nodeId, {
+          x: 'x' in n ? (n as any).x : 0,
+          y: 'y' in n ? (n as any).y : 0,
+          rotation: 'rotation' in n ? (n as any).rotation : 0,
+          opacity: 'opacity' in n ? (n as any).opacity : 1,
+          width: 'width' in n ? (n as any).width : 0,
+          height: 'height' in n ? (n as any).height : 0,
+        });
+      }
+
+      // Apply transforms
       if ('x' in n && typeof values.x === 'number') (n as any).x = values.x;
       if ('y' in n && typeof values.y === 'number') (n as any).y = values.y;
       if ('rotation' in n && typeof values.rotation === 'number')
@@ -201,7 +204,7 @@ figma.ui.onmessage = async (msg: UIToPluginMessage) => {
         const ov = values.opacity;
         if (typeof ov === 'number') (n as any).opacity = ov / 100;
       }
-      // Scale support for export frames — same Map-based approach as APPLY_FRAME
+      // Scale support for export frames
       if ('width' in n && 'height' in n) {
         const scaleX = typeof values.scaleX === 'number' ? values.scaleX : null;
         const scaleY = typeof values.scaleY === 'number' ? values.scaleY : null;
@@ -261,6 +264,20 @@ figma.ui.onmessage = async (msg: UIToPluginMessage) => {
         error: String(err),
       });
     }
+
+    // Restore original node state after export
+    for (const [nodeId, orig] of originalStates) {
+      const n = await figma.getNodeByIdAsync(nodeId);
+      if (!n) continue;
+      if ('x' in n) (n as any).x = orig.x;
+      if ('y' in n) (n as any).y = orig.y;
+      if ('rotation' in n) (n as any).rotation = orig.rotation;
+      if ('opacity' in n) (n as any).opacity = orig.opacity;
+      if ('width' in n && 'height' in n) {
+        (n as any).resize(orig.width, orig.height);
+      }
+    }
+
     break;
   }
 

@@ -156,24 +156,28 @@ const Timeline: React.FC = () => {
         }
       } else if (key === 'v') {
         // Cmd+V → Paste keyframe at current playhead
-        if (!copiedKeyframe || selectedKeyframeIds.length === 0) return;
-        const keyframeId = selectedKeyframeIds[0];
-        // Find the layer and property that own the currently selected keyframe
-        let foundLayerId: string | null = null;
-        let foundProperty: string | null = null;
-        outer: for (const layer of layers) {
-          for (const [prop, track] of Object.entries(layer.propertyTracks)) {
-            if (track.some(kf => kf.id === keyframeId)) {
-              foundLayerId = layer.id;
-              foundProperty = prop;
-              break outer;
+        if (!copiedKeyframe) return;
+        // Use selected layer/property, or find from selected keyframe
+        let targetLayerId = selectedLayerId;
+        let targetProperty = selectedProperty;
+        if (!targetLayerId || !targetProperty) {
+          // Fallback: find layer/property from first selected keyframe
+          const keyframeId = selectedKeyframeIds[0];
+          if (!keyframeId) return;
+          outer: for (const layer of layers) {
+            for (const [prop, track] of Object.entries(layer.propertyTracks)) {
+              if (track.some(kf => kf.id === keyframeId)) {
+                targetLayerId = layer.id;
+                targetProperty = prop as import('@/types/animation.types').PropertyType;
+                break outer;
+              }
             }
           }
         }
-        if (foundLayerId && foundProperty) {
+        if (targetLayerId && targetProperty) {
           e.preventDefault();
           e.stopPropagation();
-          pasteKeyframe(foundLayerId, foundProperty as import('@/types/animation.types').PropertyType, playhead);
+          pasteKeyframe(targetLayerId, targetProperty, playhead);
         }
       }
     };

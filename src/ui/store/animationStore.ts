@@ -386,7 +386,8 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
           [property]: track.map(kf => (kf.frame === frame ? { ...kf, value } : kf)),
         },
       };
-      return { layers: updatedLayers };
+      const newHistory = [...state.history, state.layers].slice(-50);
+      return { layers: updatedLayers, history: newHistory, redoStack: [] };
     });
   },
 
@@ -435,7 +436,8 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
       const updatedLayers = state.layers.map(layer =>
         layer.id === layerId ? { ...layer, name } : layer
       );
-      return { layers: updatedLayers };
+      const newHistory = [...state.history, state.layers].slice(-50);
+      return { layers: updatedLayers, history: newHistory, redoStack: [] };
     });
   },
 
@@ -620,7 +622,8 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
       }
       layer.propertyTracks = { ...layer.propertyTracks, [property]: updatedTrack };
       updatedLayers[layerIndex] = layer;
-      return { layers: updatedLayers };
+      const newHistory = [...state.history, state.layers].slice(-50);
+      return { layers: updatedLayers, history: newHistory, redoStack: [] };
     });
   },
 
@@ -775,6 +778,8 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
       fps: 30,
       playhead: 0,
       selectedLayerId: null,
+      history: [],
+      redoStack: [],
     });
   },
 
@@ -797,6 +802,8 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
       fps: target.fps,
       playhead: 0,
       selectedLayerId: null,
+      history: [],
+      redoStack: [],
     });
   },
 
@@ -821,6 +828,8 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
         fps: target.fps,
         playhead: 0,
         selectedLayerId: null,
+        history: [],
+        redoStack: [],
       });
     } else {
       set({ projects: remaining });

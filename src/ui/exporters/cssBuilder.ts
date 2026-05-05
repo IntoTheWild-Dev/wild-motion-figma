@@ -170,7 +170,7 @@ export const generateLayerCss = (layer: Layer, fps: number): string => {
     }
     css += '}\n\n';
 
-    animationParts.push(`${transformAnimName} ${durationSeconds}s linear forwards`);
+    animationParts.push(`${transformAnimName} ${durationSeconds}s forwards`);
   }
 
   // --- Opacity animation (separate — not a transform) ---
@@ -180,7 +180,7 @@ export const generateLayerCss = (layer: Layer, fps: number): string => {
     css += `@keyframes ${opacityAnimName} {\n`;
     css += generatePropertyKeyframes('opacity', opacityKfs);
     css += '}\n\n';
-    animationParts.push(`${opacityAnimName} ${durationSeconds}s linear forwards`);
+    animationParts.push(`${opacityAnimName} ${durationSeconds}s forwards`);
   }
 
   if (animationParts.length === 0) return '';
