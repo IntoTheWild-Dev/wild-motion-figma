@@ -4,9 +4,30 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      const err = this.state.error as Error;
+      return (
+        <div style={{ padding: 16, fontFamily: 'monospace', fontSize: 11, lineHeight: 1.5, color: '#e85252', background: '#0d1b2e', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+          <strong>React Error:</strong>{'\n'}{String(err)}{err.stack ? '\n' + err.stack : ''}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 );
 
@@ -38,6 +59,8 @@ const pluginToUiMessageHandler = (event: MessageEvent) => {
     window.dispatchEvent(new CustomEvent('apply-success', { detail: msg }));
   } else if (msg.type === 'APPLY_ERROR') {
     window.dispatchEvent(new CustomEvent('apply-error', { detail: msg }));
+  } else if (msg.type === 'NODE_DELETED') {
+    window.dispatchEvent(new CustomEvent('node-deleted', { detail: msg.nodeId }));
   } else if (msg.type === 'RESTORE_STATE') {
     window.dispatchEvent(new CustomEvent('restore-state', { detail: msg.data }));
   }

@@ -18,6 +18,8 @@ const App: React.FC = () => {
     getCurrentValues,
     setPlayhead,
     addLayer,
+    removeLayer,
+    layers,
     presetsOpen,
     undo,
     redo,
@@ -49,6 +51,8 @@ const App: React.FC = () => {
     getCurrentValues: state.getCurrentValues,
     setPlayhead: state.setPlayhead,
     addLayer: state.addLayer,
+    removeLayer: state.removeLayer,
+    layers: state.layers,
     presetsOpen: state.presetsOpen,
     undo: state.undo,
     redo: state.redo,
@@ -419,6 +423,20 @@ const App: React.FC = () => {
     window.addEventListener('import-layers', handleImportLayers);
     return () => window.removeEventListener('import-layers', handleImportLayers);
   }, [addLayer]);
+
+  // Auto-remove layers when their Figma node is deleted
+  useEffect(() => {
+    const handleNodeDeleted = (event: Event) => {
+      const nodeId = (event as CustomEvent<string>).detail;
+      if (!nodeId) return;
+      const layer = layers.find(l => l.nodeId === nodeId);
+      if (layer) {
+        removeLayer(layer.id);
+      }
+    };
+    window.addEventListener('node-deleted', handleNodeDeleted);
+    return () => window.removeEventListener('node-deleted', handleNodeDeleted);
+  }, [layers, removeLayer]);
 
   return (
     <div

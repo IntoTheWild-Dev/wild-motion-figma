@@ -63,3 +63,9 @@ if (code.includes('__html__')) {
 } else {
   console.log('ℹ️  __html__ token not found in dist/code.js — nothing to inject');
 }
+
+// --- 5. Write the inlined HTML back to dist/ui.html ---
+// Figma reads dist/ui.html for the __html__ global; keeping it in sync with
+// the inlined version ensures both code-path approaches work correctly.
+writeFileSync(resolve(distDir, 'ui.html'), html, 'utf-8');
+console.log('✅  Wrote self-contained HTML to dist/ui.html');

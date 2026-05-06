@@ -12,8 +12,12 @@ const TimecodeInput: React.FC = () => {
   }));
 
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
-    const stored = localStorage.getItem('wm-timecode-mode');
-    return stored === 'frame' ? 'frame' : 'timecode';
+    try {
+      const stored = localStorage.getItem('wm-timecode-mode');
+      return stored === 'frame' ? 'frame' : 'timecode';
+    } catch {
+      return 'timecode';
+    }
   });
 
   const formatTimecode = (frame: number): string => {
@@ -97,7 +101,11 @@ const TimecodeInput: React.FC = () => {
 
   const handleToggleMode = () => {
     const next: DisplayMode = displayMode === 'timecode' ? 'frame' : 'timecode';
-    localStorage.setItem('wm-timecode-mode', next);
+    try {
+      localStorage.setItem('wm-timecode-mode', next);
+    } catch {
+      // localStorage disabled in Figma sandbox
+    }
     setDisplayMode(next);
   };
 

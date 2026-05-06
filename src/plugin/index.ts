@@ -143,8 +143,8 @@ figma.ui.onmessage = async (msg: UIToPluginMessage) => {
     const { nodeId, values } = msg.payload as { nodeId: string; values: Record<string, unknown> };
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
-      figma.notify(`⚠️ Node not found: ${nodeId}`, { error: true });
-      figma.ui.postMessage({ type: 'APPLY_ERROR', error: 'Node not found', nodeId });
+      // Silently skip missing nodes during playback (layer may have been deleted in Figma)
+      figma.ui.postMessage({ type: 'NODE_DELETED', nodeId });
       break;
     }
     applyValuesToNode(nodeId, node, values);

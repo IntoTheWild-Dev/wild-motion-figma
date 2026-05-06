@@ -7,9 +7,17 @@ import GIF from 'gif.js';
 // iframe we can't load external scripts, so we inline the worker code.
 import gifWorkerSource from 'gif.js/dist/gif.worker.js?raw';
 
-const workerBlobUrl = URL.createObjectURL(
-  new Blob([gifWorkerSource], { type: 'application/javascript' })
-);
+// Created lazily on first use — avoids throwing at module-load time in
+// environments where URL.createObjectURL() may be restricted (e.g. Figma sandbox).
+let _workerBlobUrl: string | null = null;
+const getWorkerBlobUrl = (): string => {
+  if (!_workerBlobUrl) {
+    _workerBlobUrl = URL.createObjectURL(
+      new Blob([gifWorkerSource], { type: 'application/javascript' })
+    );
+  }
+  return _workerBlobUrl;
+};
 
 export type GifFrameProvider = (frameIndex: number) => Promise<ImageBitmap | null>;
 
@@ -69,7 +77,7 @@ export const generateGif = async (opts: GifExportOptions): Promise<Blob> => {
     quality,
     width,
     height,
-    workerScript: workerBlobUrl,
+    workerScript: getWorkerBlobUrl(),
     repeat,
   });
 
