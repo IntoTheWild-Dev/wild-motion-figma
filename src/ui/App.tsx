@@ -472,8 +472,6 @@ const App: React.FC = () => {
             </div>
             {presetsOpen && <PresetsPanel />}
           </div>
-          {/* Debug bar — shows animation pipeline status */}
-          <DebugBar />
         </>
       )}
       {/* Resize handle */}
@@ -487,64 +485,6 @@ const App: React.FC = () => {
       >
         <div style={{ width: 32, height: 2, borderRadius: 1, background: '#444', opacity: 0.5 }} />
       </div>
-    </div>
-  );
-};
-
-/** Tiny debug strip — shows whether the animation pipeline is sending data */
-const DebugBar: React.FC = () => {
-  const { playhead, isPlaying, layers } = useAnimationStore(s => ({
-    playhead: s.playhead,
-    isPlaying: s.isPlaying,
-    layers: s.layers,
-  }));
-  const currentValues = useAnimationStore.getState().getCurrentValues();
-  const nodeIds = Object.keys(currentValues);
-  const totalProps = nodeIds.reduce((n, id) => n + Object.keys(currentValues[id]).length, 0);
-  const [lastApplied, setLastApplied] = React.useState<string | null>(null);
-  const [pluginReceived, setPluginReceived] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    const handleReceived = (e: Event) => {
-      const d = (e as CustomEvent).detail;
-      setPluginReceived(
-        `→ node=${d.nodeId?.slice(0, 6)} found=${d.hasNode} keys=${d.keys?.join(',')}`
-      );
-    };
-    const handleSuccess = (e: Event) => {
-      const d = (e as CustomEvent).detail;
-      setLastApplied(`✓ ${d.nodeId?.slice(0, 6)} ${d.applied}`);
-      setTimeout(() => setLastApplied(null), 1500);
-    };
-    const handleError = (e: Event) => {
-      const d = (e as CustomEvent).detail;
-      setLastApplied(`✗ ${d.error}: ${d.nodeId?.slice(0, 6)}`);
-    };
-    window.addEventListener('plugin-received', handleReceived);
-    window.addEventListener('apply-success', handleSuccess);
-    window.addEventListener('apply-error', handleError);
-    return () => {
-      window.removeEventListener('plugin-received', handleReceived);
-      window.removeEventListener('apply-success', handleSuccess);
-      window.removeEventListener('apply-error', handleError);
-    };
-  }, []);
-
-  return (
-    <div
-      className="flex-shrink-0 flex items-center gap-3 px-3 border-t border-wm-border bg-wm-panel"
-      style={{ height: 18, fontSize: 9, fontFamily: 'monospace' }}
-    >
-      <span className={isPlaying ? 'text-wm-green' : 'text-wm-muted'}>{isPlaying ? '▶' : '⏸'}</span>
-      <span className="text-wm-muted">F:{playhead}</span>
-      <span className="text-wm-muted">L:{layers.length}</span>
-      {pluginReceived && <span className="text-wm-accent">{pluginReceived}</span>}
-      {lastApplied && <span className="text-wm-green">{lastApplied}</span>}
-      {!pluginReceived && !lastApplied && (
-        <span className={totalProps > 0 ? 'text-wm-accent' : 'text-wm-muted'}>
-          sending:{nodeIds.length}n,{totalProps}p
-        </span>
-      )}
     </div>
   );
 };

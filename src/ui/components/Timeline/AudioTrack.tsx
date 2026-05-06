@@ -244,7 +244,7 @@ const AudioTrack: React.FC<AudioTrackProps> = ({ ppf: _ppf, duration: _duration,
             />
             {/* Fade in */}
             <label className="flex items-center gap-0.5">
-              <span className="text-2xs text-wm-muted">FI</span>
+              <span className="text-2xs text-wm-muted">In</span>
               <input type="number" min="0" max={audioDuration / 2} step="0.1"
                 value={audioFadeIn}
                 onChange={(e) => setAudioFadeIn(parseFloat(e.target.value) || 0)}
@@ -254,7 +254,7 @@ const AudioTrack: React.FC<AudioTrackProps> = ({ ppf: _ppf, duration: _duration,
             </label>
             {/* Fade out */}
             <label className="flex items-center gap-0.5">
-              <span className="text-2xs text-wm-muted">FO</span>
+              <span className="text-2xs text-wm-muted">Out</span>
               <input type="number" min="0" max={audioDuration / 2} step="0.1"
                 value={audioFadeOut}
                 onChange={(e) => setAudioFadeOut(parseFloat(e.target.value) || 0)}

@@ -53,7 +53,7 @@ export const PlaybackControls: React.FC<{ isPlaying: boolean }> = ({ isPlaying }
       <button
         className={btnBase}
         title="Stop"
-        onClick={() => { setPlaybackState(false); setPlayhead(0); }}
+        onClick={() => setPlaybackState(false)}
       >
         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
           <rect x="2.5" y="2.5" width="7" height="7" rx="1" />

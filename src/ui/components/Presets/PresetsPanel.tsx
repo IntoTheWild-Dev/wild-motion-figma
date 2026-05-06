@@ -12,6 +12,7 @@ const PresetsPanel: React.FC = () => {
     layers,
     selectedLayerId,
     playhead,
+    fps,
     applyAnimationPreset,
     customPresets,
     saveAsCustomPreset,
@@ -20,6 +21,7 @@ const PresetsPanel: React.FC = () => {
     layers: state.layers,
     selectedLayerId: state.selectedLayerId,
     playhead: state.playhead,
+    fps: state.fps,
     applyAnimationPreset: state.applyAnimationPreset,
     customPresets: state.customPresets,
     saveAsCustomPreset: state.saveAsCustomPreset,
@@ -41,7 +43,7 @@ const PresetsPanel: React.FC = () => {
   const scaledPreset = (preset: AnimationPreset): AnimationPreset => {
     const secs = parseFloat(durationOverride);
     if (!secs || secs <= 0) return preset;
-    const targetFrames = Math.round(secs * 30);
+    const targetFrames = Math.round(secs * fps);
     const ratio = targetFrames / preset.durationFrames;
     return {
       ...preset,

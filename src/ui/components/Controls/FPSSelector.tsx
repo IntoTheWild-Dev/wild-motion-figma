@@ -8,7 +8,7 @@ export const FPSSelector: React.FC = () => {
     setFPS: state.setFPS,
   }));
 
-  const fpsOptions = [10, 24, 30, 60];
+  const fpsOptions = [10, 24, 25, 29.97, 30, 60];
 
   return (
     <div className="flex items-center gap-1 flex-shrink-0">

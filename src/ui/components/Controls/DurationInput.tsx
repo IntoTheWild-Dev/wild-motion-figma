@@ -53,8 +53,10 @@ const DurationInput: React.FC = () => {
   };
 
   const handleStep = (delta: number) => {
-    commitValue(inputValue);
-    const newSeconds = Math.max(0.1, seconds + delta);
+    const parsedSeconds = parseFloat(inputValue);
+    const base = !isNaN(parsedSeconds) && parsedSeconds > 0 ? parsedSeconds : seconds;
+    isTypingRef.current = false;
+    const newSeconds = Math.max(0.1, base + delta);
     const newFrames = Math.round(newSeconds * fps);
     setDuration(Math.max(1, newFrames));
     setInputValue((newFrames / fps).toFixed(1));
