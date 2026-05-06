@@ -3,10 +3,12 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react()],
   root: '.',
-  base: './',
+  // './' needed at build time for Figma's self-contained inlined HTML;
+  // '/' needed in dev so Vite serves index.html at the root path.
+  base: command === 'serve' ? '/' : './',
   // Transpile modern syntax for Figma plugin sandbox compatibility
   esbuild: {
     target: 'es2017'
@@ -47,4 +49,4 @@ export default defineConfig({
   optimizeDeps: {
     include: ['react', 'react-dom']
   }
-});
+}));
