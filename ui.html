@@ -4,6 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wild Motion</title>
+    <script>
+      window.onerror = function(msg, src, line, col, err) {
+        var el = document.getElementById('root');
+        if (el) {
+          el.style.cssText = 'padding:16px;font:11px/1.5 monospace;color:#e85252;background:#0d1b2e;white-space:pre-wrap;word-break:break-all';
+          el.textContent = 'JS Error: ' + msg + '\nat ' + src + ':' + line + (err ? '\n' + err.stack : '');
+        }
+        return false;
+      };
+      window.addEventListener('unhandledrejection', function(e) {
+        var el = document.getElementById('root');
+        if (el && !el.children.length) {
+          el.style.cssText = 'padding:16px;font:11px/1.5 monospace;color:#e85252;background:#0d1b2e;white-space:pre-wrap;word-break:break-all';
+          el.textContent = 'Unhandled rejection: ' + (e.reason && e.reason.stack ? e.reason.stack : e.reason);
+        }
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>
