@@ -56,8 +56,12 @@ html = html.replace(
 let code = readFileSync(resolve(distDir, 'code.js'), 'utf-8');
 
 if (code.includes('__html__')) {
-  // Replace ALL occurrences of the bare __html__ identifier with the literal
-  code = code.replace(/__html__/g, JSON.stringify(html));
+  // Use a function for the replacement so that `$` characters inside the HTML
+  // (e.g. `$&&y(...)` from Rollup-minified React code) are NOT interpreted as
+  // special replacement patterns ($& = matched string). Without this, every
+  // `$&` in the bundle becomes `__html__`, causing ReferenceError at runtime.
+  const htmlLiteral = JSON.stringify(html);
+  code = code.replace(/__html__/g, () => htmlLiteral);
   writeFileSync(resolve(distDir, 'code.js'), code, 'utf-8');
   console.log('✅  Replaced __html__ token in dist/code.js with inlined HTML string');
 } else {
