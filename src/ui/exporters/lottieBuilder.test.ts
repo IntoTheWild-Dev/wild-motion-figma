@@ -48,7 +48,7 @@ describe('lottieBuilder', () => {
 
     const layer = lottie.layers[0];
     expect(layer.nm).toBe('Test Layer');
-    expect(layer.ty).toBe(3); // null layer
+    expect(layer.ty).toBe(1); // solid layer (ty:3 null layers are invisible in Lottie viewers)
     expect(layer.ip).toBe(0);
     expect(layer.op).toBe(90);
 
