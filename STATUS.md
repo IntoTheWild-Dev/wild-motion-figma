@@ -62,6 +62,19 @@ Changes based on the 11 May tester feedback session.
 
 ---
 
+---
+
+## ✅ May 2026 — Build Fix: `__html__` ReferenceError
+
+### Bug: Plugin UI crashed after loading with `__html__ is not defined`
+
+- **Problem:** After the May 2026 feature additions, Rollup's minifier assigned `$` as a variable name in the React bundle, producing patterns like `$&&someCall()`. The `scripts/inline-html.mjs` post-build script used `String.replace(/__html__/g, JSON.stringify(html))` — but JavaScript's `String.replace` interprets `$&` inside a string replacement as "insert the matched substring". Every `$&&` in the bundle became `__html__&&`, injecting `__html__` as an undefined variable into the UI.
+- **Symptom:** Plugin front page loaded fine, but as soon as any component using the `$&&` pattern rendered (e.g. Curve Editor), the iframe threw `ReferenceError: __html__ is not defined` and crashed the entire UI.
+- **Fix:** Changed the replacement to use a function `() => htmlLiteral` instead of the string directly. Function replacements bypass `$`-pattern interpolation entirely.
+- **File:** `scripts/inline-html.mjs`
+
+---
+
 ### Known Remaining Notes
 
 - `PROP_LABELS` is duplicated in `App.tsx` and `Timeline.tsx` — candidate for extraction to a shared constants file.
