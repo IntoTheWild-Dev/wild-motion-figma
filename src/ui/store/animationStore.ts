@@ -357,28 +357,30 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
   },
 
   removeSelectedKeyframe: () => {
-    const { selectedKeyframeIds, selectedLayerId, selectedProperty, layers } = get();
-    if (selectedKeyframeIds.length === 0 || !selectedLayerId || !selectedProperty) return;
-    const layer = layers.find(l => l.id === selectedLayerId);
-    if (!layer) return;
-    const track = layer.propertyTracks[selectedProperty];
-    if (!track) return;
+    const { selectedKeyframeIds } = get();
+    if (selectedKeyframeIds.length === 0) return;
+    const idsToRemove = new Set(selectedKeyframeIds);
     set(state => {
-      const layerIndex = state.layers.findIndex(l => l.id === selectedLayerId);
-      if (layerIndex === -1) return state;
-      const oldLayer = state.layers[layerIndex];
-      const updatedLayers = [...state.layers];
-      updatedLayers[layerIndex] = {
-        ...oldLayer,
-        propertyTracks: {
-          ...oldLayer.propertyTracks,
-          [selectedProperty]: (oldLayer.propertyTracks[selectedProperty] || []).filter(
-            k => !selectedKeyframeIds.includes(k.id)
-          ),
-        },
-      };
+      const updatedLayers = state.layers.map(layer => {
+        let changed = false;
+        const newPropertyTracks = Object.fromEntries(
+          Object.entries(layer.propertyTracks).map(([prop, track]) => {
+            if (!track) return [prop, track];
+            const filtered = (track as Keyframe[]).filter(kf => !idsToRemove.has(kf.id));
+            if (filtered.length !== (track as Keyframe[]).length) changed = true;
+            return [prop, filtered];
+          })
+        ) as Layer['propertyTracks'];
+        return changed ? { ...layer, propertyTracks: newPropertyTracks } : layer;
+      });
       const newHistory = [...state.history, state.layers].slice(-50);
-      return { layers: updatedLayers, history: newHistory, selectedKeyframeIds: [] };
+      return {
+        layers: updatedLayers,
+        history: newHistory,
+        redoStack: [],
+        selectedKeyframeIds: [],
+        selectedKeyframeAddresses: [],
+      };
     });
   },
 

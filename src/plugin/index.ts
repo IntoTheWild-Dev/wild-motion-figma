@@ -52,6 +52,10 @@ const applyValuesToNode = (nodeId: string, node: SceneNode, values: Record<strin
     const { w: baseW, h: baseH } = nodeSizeCache.get(nodeId)!;
     const sx = typeof values.scaleX === 'number' ? values.scaleX : 1;
     const sy = typeof values.scaleY === 'number' ? values.scaleY : 1;
+    // Text nodes require auto-resize to be disabled before manual resize
+    if ((fnode as any).type === 'TEXT') {
+      (fnode as any).textAutoResize = 'NONE';
+    }
     (fnode as any).resize(baseW * sx, baseH * sy);
   }
 };

@@ -37,12 +37,15 @@ interface LottieTransform {
 
 interface LottieLayer {
   nm: string;       // name
-  ty: 3;            // type 3 = null layer (universal, no visual props required)
+  ty: 1;            // type 1 = solid layer (visible rectangle)
   ip: number;       // in point
   op: number;       // out point (exclusive — one past last frame)
   st: number;       // start time
   sr: number;       // stretch ratio
   ind: number;      // layer index
+  sw: number;       // solid width
+  sh: number;       // solid height
+  sc: string;       // solid color (#rrggbb)
   ks: LottieTransform;
 }
 
@@ -216,20 +219,26 @@ export const generateLottie = (
     const opKfs = layer.propertyTracks['opacity'] || [];
     const opacity = buildAnimatedScalar(opKfs, v => v, baseOpacity);
 
+    const solidW = (base as any).width ?? 100;
+    const solidH = (base as any).height ?? 100;
+
     return {
       nm: layer.name || `Layer ${idx + 1}`,
-      ty: 3,          // null layer — works for any node type
+      ty: 1,          // solid layer — visible rectangle placeholder
       ip: 0,
       op,
       st: 0,
       sr: 1,
       ind: idx + 1,
+      sw: solidW,
+      sh: solidH,
+      sc: '#cccccc',
       ks: {
         p: position,
         s: scale,
         r: rotation,
         o: opacity,
-        a: { a: 0, k: [0, 0, 0] }, // anchor point (static)
+        a: { a: 0, k: [0, 0, 0] }, // anchor point (static at layer origin)
       },
     };
   });

@@ -1,13 +1,19 @@
 // src/ui/App.tsx
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAnimationStore } from '@/ui/store/animationStore';
 import Controls from '@/ui/components/Controls/Controls';
 import Timeline from '@/ui/components/Timeline/Timeline';
 import PresetsPanel from '@/ui/components/Presets/PresetsPanel';
+import CurveEditor from '@/ui/components/CurveEditor/CurveEditor';
 import ProjectBar from '@/ui/components/ProjectBar/ProjectBar';
 import HomeScreen from '@/ui/components/HomeScreen/HomeScreen';
 import { sendFrameToPlugin } from './main';
 import { audioManager, voiceoverManager } from '@/ui/audio/audioManager';
+import type { EasingPreset, PropertyType } from '@/types/animation.types';
+
+const PROP_LABELS: Record<string, string> = {
+  x: 'Pos X', y: 'Pos Y', scaleX: 'Scale X', scaleY: 'Scale Y', rotation: 'Rotation', opacity: 'Opacity', fill: 'Fill',
+};
 
 const App: React.FC = () => {
   const {
@@ -24,6 +30,8 @@ const App: React.FC = () => {
     undo,
     redo,
     removeSelectedKeyframe,
+    updateKeyframeById,
+    clearKeyframeSelection,
     copyKeyframe,
     pasteKeyframe,
     selectedLayerId,
@@ -57,10 +65,12 @@ const App: React.FC = () => {
     undo: state.undo,
     redo: state.redo,
     removeSelectedKeyframe: state.removeSelectedKeyframe,
+    updateKeyframeById: state.updateKeyframeById,
+    clearKeyframeSelection: state.clearKeyframeSelection,
     copyKeyframe: state.copyKeyframe,
     pasteKeyframe: state.pasteKeyframe,
-    selectedLayerId: state.selectedLayerId,
-    selectedProperty: state.selectedProperty,
+    selectedLayerId: state.selectedLayerId as string | null,
+    selectedProperty: state.selectedProperty as PropertyType | null,
     selectedKeyframeIds: state.selectedKeyframeIds,
     audioName: state.audioName,
     audioMuted: state.audioMuted,
@@ -133,6 +143,30 @@ const App: React.FC = () => {
   }, []);
 
   const wasPlayingRef = useRef(false);
+  const prevPlayheadForAudioRef = useRef(0);
+
+  const selectedKfData = useMemo(() => {
+    if (selectedKeyframeIds.length === 0) return null;
+    const kfId = selectedKeyframeIds[0];
+    if (selectedLayerId && selectedProperty) {
+      const layer = layers.find(l => l.id === selectedLayerId);
+      const kf = layer?.propertyTracks[selectedProperty]?.find(k => k.id === kfId);
+      if (kf) return { ...kf, layerId: selectedLayerId, property: selectedProperty };
+    }
+    for (const layer of layers) {
+      for (const [prop, track] of Object.entries(layer.propertyTracks)) {
+        const kf = track?.find(k => k.id === kfId);
+        if (kf) return { ...kf, layerId: layer.id, property: prop as PropertyType };
+      }
+    }
+    return null;
+  }, [selectedKeyframeIds, selectedLayerId, selectedProperty, layers]);
+
+  const handleEasingChange = useCallback((easing: EasingPreset) => {
+    if (!selectedKfData) return;
+    updateKeyframeById(selectedKfData.layerId, selectedKfData.property as PropertyType, selectedKfData.id, { easing });
+  }, [selectedKfData, updateKeyframeById]);
+
   const [importError, setImportError] = React.useState<string | null>(null);
   const [figmaSelection, setFigmaSelection] = React.useState<
     Array<{
@@ -244,6 +278,29 @@ const App: React.FC = () => {
   useEffect(() => {
     wasPlayingRef.current = isPlaying;
   }, [isPlaying]);
+
+  // Restart audio when playhead loops back to 0 during playback
+  useEffect(() => {
+    if (isPlaying && playhead === 0 && prevPlayheadForAudioRef.current >= duration - 1) {
+      if (audioName) {
+        audioManager.play(0, {
+          trimStart: audioTrimStart,
+          trimEnd: audioTrimEnd || undefined,
+          fadeIn: audioFadeIn,
+          fadeOut: audioFadeOut,
+        });
+      }
+      if (voiceoverName) {
+        voiceoverManager.play(0, {
+          trimStart: voiceoverTrimStart,
+          trimEnd: voiceoverTrimEnd || undefined,
+          fadeIn: voiceoverFadeIn,
+          fadeOut: voiceoverFadeOut,
+        });
+      }
+    }
+    prevPlayheadForAudioRef.current = playhead;
+  }, [playhead, isPlaying, duration, audioName, voiceoverName, audioTrimStart, audioTrimEnd, audioFadeIn, audioFadeOut, voiceoverTrimStart, voiceoverTrimEnd, voiceoverFadeIn, voiceoverFadeOut]);
 
   // Keyboard shortcuts: Space = play/pause, Cmd/Ctrl+Z = undo, Cmd/Ctrl+Shift+Z or Cmd/Ctrl+Y = redo, Delete/Backspace = delete selected keyframe, Cmd+C = copy keyframe, Cmd+V = paste keyframe
   useEffect(() => {
@@ -488,7 +545,50 @@ const App: React.FC = () => {
             <div className="flex-1 overflow-hidden">
               <Timeline />
             </div>
-            {presetsOpen && <PresetsPanel />}
+            {(presetsOpen || !!selectedKfData) && (
+              <div className="flex flex-shrink-0 border-l border-wm-border" style={{ width: 260 }}>
+                {!!selectedKfData && (
+                  <div
+                    className="flex flex-col border-r border-wm-border overflow-hidden"
+                    style={{ width: presetsOpen ? 130 : 260 }}
+                  >
+                    <div className="flex items-center justify-between px-2 py-1 border-b border-wm-border bg-wm-panel flex-shrink-0">
+                      <span className="text-xs font-medium text-wm-text truncate">
+                        {PROP_LABELS[selectedKfData.property] ?? selectedKfData.property} · F{selectedKfData.frame}
+                      </span>
+                      <div className="flex items-center gap-0.5 flex-shrink-0">
+                        <button
+                          onClick={() => removeSelectedKeyframe()}
+                          className="flex items-center justify-center w-5 h-5 rounded text-wm-muted hover:text-wm-record hover:bg-wm-surface transition-colors"
+                          title="Delete keyframe"
+                        >
+                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                            <path d="M1.5 3h7M3 3V2a1 1 0 011-1h2a1 1 0 011 1v1M4 5v3M6 5v3M2 3l.5 5.5A1 1 0 003.5 9.5h3a1 1 0 001-.98L8 3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => clearKeyframeSelection()}
+                          className="flex items-center justify-center w-5 h-5 rounded text-wm-muted hover:text-wm-text hover:bg-wm-surface transition-colors"
+                          title="Close"
+                        >
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                            <path d="M1.5 1.5l5 5M6.5 1.5l-5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex-1 flex items-center justify-center overflow-hidden p-2">
+                      <CurveEditor easing={selectedKfData.easing} onChange={handleEasingChange} />
+                    </div>
+                  </div>
+                )}
+                {presetsOpen && (
+                  <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+                    <PresetsPanel />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           {/* Debug bar — shows animation pipeline status */}
           <DebugBar />

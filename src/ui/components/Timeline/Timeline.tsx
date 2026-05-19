@@ -4,9 +4,9 @@ import { useAnimationStore } from '@/ui/store/animationStore';
 import KeyframeTrack from './KeyframeTrack';
 import AudioTrack from './AudioTrack';
 import VoiceoverTrack from './VoiceoverTrack';
-import CurveEditor from '@/ui/components/CurveEditor/CurveEditor';
 import PropertyValueInput from './PropertyValueInput';
-import type { PropertyType, EasingPreset } from '@/types/animation.types';
+import { audioManager, voiceoverManager } from '@/ui/audio/audioManager';
+import type { PropertyType } from '@/types/animation.types';
 
 const LAYER_NAME_WIDTH = 180;
 const TRACK_ROW_HEIGHT = 24;
@@ -38,11 +38,10 @@ const Timeline: React.FC = () => {
     removeKeyframe,
     undo,
     redo,
-    removeSelectedKeyframe,
     selectedKeyframeIds,
     setSelectedKeyframes,
-    clearKeyframeSelection,
     toggleKeyframeSelection,
+    isPlaying,
     moveSelectedKeyframes,
     updateKeyframeById,
     removeLayer,
@@ -66,11 +65,10 @@ const Timeline: React.FC = () => {
     removeKeyframe: state.removeKeyframe,
     undo: state.undo,
     redo: state.redo,
-    removeSelectedKeyframe: state.removeSelectedKeyframe,
     selectedKeyframeIds: state.selectedKeyframeIds,
     setSelectedKeyframes: state.setSelectedKeyframes,
-    clearKeyframeSelection: state.clearKeyframeSelection,
     toggleKeyframeSelection: state.toggleKeyframeSelection,
+    isPlaying: state.isPlaying,
     moveSelectedKeyframes: state.moveSelectedKeyframes,
     updateKeyframeById: state.updateKeyframeById,
     removeLayer: state.removeLayer,
@@ -83,6 +81,8 @@ const Timeline: React.FC = () => {
   }));
 
   const trackAreaRef = useRef<HTMLDivElement>(null);
+  const layerNamesRef = useRef<HTMLDivElement>(null);
+  const isScrollSyncing = useRef(false);
   const [trackWidth, setTrackWidth] = useState(0);
   // Track which layer IDs are collapsed (starts expanded by default)
   const [collapsedLayers, setCollapsedLayers] = useState<Set<string>>(new Set());
@@ -200,34 +200,80 @@ const Timeline: React.FC = () => {
     });
   }, []);
 
-  // Find the selected keyframe's easing (for curve editor)
-  const selectedKfData = React.useMemo(() => {
-    const selectedKfId = selectedKeyframeIds[0];
-    if (!selectedKfId || !selectedLayerId || !selectedProperty) return null;
-    const layer = layers.find(l => l.id === selectedLayerId);
-    if (!layer) return null;
-    const track = layer.propertyTracks[selectedProperty];
-    if (!track) return null;
-    return track.find(kf => kf.id === selectedKfId) || null;
-  }, [selectedKeyframeIds, selectedLayerId, selectedProperty, layers]);
+  // Sync scrolling between layer-names panel and keyframe-tracks panel
+  const handleLayerNamesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (isScrollSyncing.current) return;
+    isScrollSyncing.current = true;
+    if (rubberBandContainerRef.current) {
+      rubberBandContainerRef.current.scrollTop = e.currentTarget.scrollTop;
+    }
+    isScrollSyncing.current = false;
+  }, []);
 
-  const handleEasingChange = useCallback(
-    (easing: EasingPreset) => {
-      const selectedKfId = selectedKeyframeIds[0];
-      if (!selectedLayerId || !selectedProperty || !selectedKfId) return;
-      updateKeyframeById(selectedLayerId, selectedProperty, selectedKfId, { easing });
-    },
-    [selectedLayerId, selectedProperty, selectedKeyframeIds, updateKeyframeById]
-  );
+  const handleTracksContainerScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (isScrollSyncing.current) return;
+    isScrollSyncing.current = true;
+    if (layerNamesRef.current) {
+      layerNamesRef.current.scrollTop = e.currentTarget.scrollTop;
+    }
+    isScrollSyncing.current = false;
+  }, []);
+
+  // Prev / Next keyframe navigation
+  const handlePrevKeyframe = useCallback(() => {
+    const frames: number[] = [];
+    if (selectedLayerId && selectedProperty) {
+      const layer = layers.find(l => l.id === selectedLayerId);
+      (layer?.propertyTracks[selectedProperty] || []).forEach(kf => frames.push(kf.frame));
+    } else {
+      for (const layer of layers) {
+        for (const track of Object.values(layer.propertyTracks)) {
+          if (track) track.forEach(kf => frames.push(kf.frame));
+        }
+      }
+    }
+    const sorted = [...new Set(frames)].sort((a, b) => a - b);
+    const prev = sorted.filter(f => f < playhead).pop();
+    if (prev !== undefined) setPlayhead(prev);
+  }, [layers, selectedLayerId, selectedProperty, playhead, setPlayhead]);
+
+  const handleNextKeyframe = useCallback(() => {
+    const frames: number[] = [];
+    if (selectedLayerId && selectedProperty) {
+      const layer = layers.find(l => l.id === selectedLayerId);
+      (layer?.propertyTracks[selectedProperty] || []).forEach(kf => frames.push(kf.frame));
+    } else {
+      for (const layer of layers) {
+        for (const track of Object.values(layer.propertyTracks)) {
+          if (track) track.forEach(kf => frames.push(kf.frame));
+        }
+      }
+    }
+    const sorted = [...new Set(frames)].sort((a, b) => a - b);
+    const next = sorted.find(f => f > playhead);
+    if (next !== undefined) setPlayhead(next);
+  }, [layers, selectedLayerId, selectedProperty, playhead, setPlayhead]);
+
+  // Total pixel height of all track rows (used for playhead line height)
+  const totalTrackHeight = React.useMemo(() => {
+    return layers.reduce((sum, layer) => {
+      const collapsed = collapsedLayers.has(layer.id);
+      return sum + HEADER_ROW_HEIGHT + (collapsed ? 0 : PROPERTIES.length * TRACK_ROW_HEIGHT);
+    }, 0);
+  }, [layers, collapsedLayers]);
 
   const handleRulerPointer = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      if (isPlaying) {
+        audioManager.stop();
+        voiceoverManager.stop();
+      }
       const rect = e.currentTarget.getBoundingClientRect();
       const frame = Math.round((e.clientX - rect.left) / ppf);
       setPlayhead(Math.max(0, Math.min(frame, duration)));
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    [ppf, duration, setPlayhead]
+    [isPlaying, ppf, duration, setPlayhead]
   );
 
   const handleRulerMove = useCallback(
@@ -391,7 +437,6 @@ const Timeline: React.FC = () => {
   }
 
   const playheadX = playhead * ppf;
-  const showCurveEditor = !!selectedKfData;
 
   return (
     <div className="flex flex-col h-full bg-wm-bg overflow-hidden">
@@ -403,6 +448,27 @@ const Timeline: React.FC = () => {
         >
           <span className="text-xs text-wm-muted select-none">Layers</span>
           <div className="flex items-center gap-0.5">
+            {/* Prev keyframe */}
+            <button
+              onClick={handlePrevKeyframe}
+              className="flex items-center justify-center w-5 h-5 rounded text-wm-muted hover:text-wm-text hover:bg-wm-surface transition-colors"
+              title="Previous keyframe"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M2 2v6M8 2L4 5l4 3V2z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {/* Next keyframe */}
+            <button
+              onClick={handleNextKeyframe}
+              className="flex items-center justify-center w-5 h-5 rounded text-wm-muted hover:text-wm-text hover:bg-wm-surface transition-colors"
+              title="Next keyframe"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M8 2v6M2 2l4 3-4 3V2z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <div className="w-px h-3 bg-wm-border/50 mx-0.5" />
             <button
               onClick={undo}
               className="flex items-center justify-center w-5 h-5 rounded text-wm-muted hover:text-wm-text hover:bg-wm-surface transition-colors"
@@ -486,8 +552,10 @@ const Timeline: React.FC = () => {
       <div className="flex flex-1 overflow-hidden min-h-0">
         {/* Layer names panel */}
         <div
+          ref={layerNamesRef}
           className="flex-shrink-0 flex flex-col bg-wm-panel border-r border-wm-border overflow-y-auto overflow-x-hidden"
           style={{ width: LAYER_NAME_WIDTH }}
+          onScroll={handleLayerNamesScroll}
         >
           {layers.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-2 px-4 py-6">
@@ -675,6 +743,7 @@ const Timeline: React.FC = () => {
           onPointerDown={handleTracksPointerDown}
           onPointerMove={handleTracksPointerMove}
           onPointerUp={handleTracksPointerUp}
+          onScroll={handleTracksContainerScroll}
         >
           {layers.map(layer => {
             const isCollapsed = collapsedLayers.has(layer.id);
@@ -736,8 +805,8 @@ const Timeline: React.FC = () => {
           })}
           {ppf > 0 && layers.length > 0 && (
             <div
-              className="absolute top-0 bottom-0 w-0.5 bg-wm-playhead/70 pointer-events-none z-10"
-              style={{ left: playheadX }}
+              className="absolute top-0 w-0.5 bg-wm-playhead/70 pointer-events-none z-10"
+              style={{ left: playheadX, height: totalTrackHeight }}
             />
           )}
           {/* Rubber-band selection overlay */}
@@ -757,49 +826,6 @@ const Timeline: React.FC = () => {
         </div>
       </div>
 
-      {/* Curve Editor — shown when a keyframe is selected */}
-      {showCurveEditor && (
-        <div className="flex-shrink-0 border-t border-wm-border bg-wm-panel px-4 py-2">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-wm-text">Curve Editor</span>
-            <div className="flex items-center gap-2">
-              <span className="text-2xs text-wm-muted">
-                {selectedProperty ? PROP_LABELS[selectedProperty] : ''} · Frame{' '}
-                {selectedKfData.frame} · {selectedKfData.value}
-              </span>
-              <button
-                onClick={() => removeSelectedKeyframe()}
-                className="flex items-center justify-center w-5 h-5 rounded text-wm-muted hover:text-wm-record hover:bg-wm-surface transition-colors"
-                title="Delete keyframe"
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <path
-                    d="M1.5 3h7M3 3V2a1 1 0 011-1h2a1 1 0 011 1v1M4 5v3M6 5v3M2 3l.5 5.5A1 1 0 003.5 9.5h3a1 1 0 001-.98L8 3"
-                    stroke="currentColor"
-                    strokeWidth="1.1"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={() => clearKeyframeSelection()}
-                className="text-wm-muted hover:text-wm-text transition-colors"
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <path
-                    d="M1.5 1.5l7 7M8.5 1.5l-7 7"
-                    stroke="currentColor"
-                    strokeWidth="1.2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-          <CurveEditor easing={selectedKfData.easing} onChange={handleEasingChange} />
-        </div>
-      )}
     </div>
   );
 };

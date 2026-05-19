@@ -111,7 +111,7 @@ const Mp4Exporter: React.FC = () => {
               type: 'EXPORT_FRAME_REQUEST',
               payload: { allLayerValues, frameIndex, width, height }
             }
-          }, 'https://www.figma.com');
+          }, '*');
 
           const bitmap = await Promise.race([
             framePromise,
